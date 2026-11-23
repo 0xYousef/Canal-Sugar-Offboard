@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+node_modules
+gateway
+e2e
+samples
+scripts
+SETUP.md
+render.yaml

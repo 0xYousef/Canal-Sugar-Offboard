@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up Canal Sugar Offboarding</title>
+<style>
+  :root{--bg:#eef8f2;--card:#fff;--ink:#16231d;--muted:#4b5f55;--g:#1f8a5f;--gd:#0f3d2e;--soft:#d9f1e5;--line:#cfe3d8;--warn:#fff4d6;--warnb:#e8c46a;--shadow:0 10px 30px -14px rgb(15 80 55/.35)}
+  @media (prefers-color-scheme:dark){:root{--bg:#0d1511;--card:#17211c;--ink:#eaf5ef;--muted:#a3b8ad;--g:#43c28c;--gd:#a6e9c9;--soft:#1d3a2d;--line:#2b3d33;--warn:#3a3118;--warnb:#7d6a2b;--shadow:0 10px 30px -14px #000}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.5 "Segoe UI",system-ui,sans-serif}
+  main{max-width:960px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:2.1rem;line-height:1.15;margin:0 0 6px}
+  h2{font-size:1.5rem;margin:48px 0 6px}
+  .sub{color:var(--muted);margin:0 0 8px}
+  .pill{display:inline-block;background:var(--soft);color:var(--gd);border-radius:99px;padding:3px 14px;font-weight:600;font-size:.95rem}
+  .step{display:grid;grid-template-columns:64px 1fr;gap:18px;margin:26px 0;align-items:start}
+  .num{width:56px;height:56px;border-radius:50%;background:var(--g);color:#fff;font-weight:700;font-size:1.6rem;display:grid;place-items:center;box-shadow:var(--shadow)}
+  .body{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px 22px;box-shadow:var(--shadow)}
+  .body h3{margin:0 0 4px;font-size:1.3rem}
+  .body p{margin:0 0 14px;color:var(--muted)}
+  b.k{color:var(--ink)}
+  .stage{background:var(--bg);border:1px dashed var(--line);border-radius:16px;padding:18px;position:relative;overflow:hidden;min-height:150px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  /* little Windows-style mock-ups */
+  .win{background:#fff;color:#1b1b1b;border:1px solid #c9d3cd;border-radius:10px;box-shadow:0 8px 24px -10px rgb(0 0 0/.35);overflow:hidden;font:14px/1.3 "Segoe UI",system-ui,sans-serif;min-width:230px}
+  .win .bar{background:#f1f5f3;padding:6px 10px;font-size:12px;color:#455;display:flex;gap:6px;align-items:center;border-bottom:1px solid #dde6e0}
+  .win .bar i{width:9px;height:9px;border-radius:50%;background:#c3cfc8;display:inline-block}
+  .win .in{padding:12px 14px}
+  .row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px}
+  .row.hot{background:#d4f0e2;outline:3px solid var(--g);outline-offset:-1px;font-weight:700}
+  .row.dim{opacity:.5}
+  .ico{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;flex:none}
+  .zip{background:#e0a53a}.vbs{background:#1f8a5f}.fold{background:#e8c25b;color:#6b4f00}.txt{background:#8aa0a0}
+  .btn{display:inline-block;border-radius:6px;padding:6px 18px;font-weight:600;border:1px solid #b9c5be;background:#f4f7f5;color:#1b1b1b}
+  .btn.hot{background:var(--g);color:#fff;border-color:var(--g);outline:3px solid #9be3c3;outline-offset:2px}
+  .menu{background:#fff;border:1px solid #c9d3cd;border-radius:8px;box-shadow:0 8px 24px -10px rgb(0 0 0/.4);padding:4px;color:#1b1b1b;min-width:190px;font:14px "Segoe UI",system-ui,sans-serif}
+  .menu div{padding:6px 12px;border-radius:5px}
+  .menu .hot{background:#d4f0e2;outline:3px solid var(--g);outline-offset:-1px;font-weight:700}
+  .arrow{font-size:2rem;color:var(--g);font-weight:700}
+  .click{position:absolute;width:34px;height:34px;pointer-events:none}
+  .click svg{filter:drop-shadow(0 2px 2px rgb(0 0 0/.4))}
+  .ring{position:absolute;width:44px;height:44px;border:4px solid var(--g);border-radius:50%;opacity:.0;animation:pulse 1.8s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(.4);opacity:.9}100%{transform:scale(1.6);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.ring{animation:none;opacity:.5}}
+  .tip{background:var(--warn);border:1px solid var(--warnb);border-radius:14px;padding:12px 16px;margin-top:14px;font-size:1rem}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px 22px;box-shadow:var(--shadow);margin:14px 0}
+  code,.mono{font-family:Consolas,monospace;background:var(--soft);color:var(--gd);padding:2px 8px;border-radius:6px}
+  details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 18px;margin:10px 0}
+  summary{cursor:pointer;font-weight:600}
+  details p{margin:8px 0 0;color:var(--muted)}
+  .logo{display:flex;align-items:center;gap:12px;margin-bottom:18px;font-weight:700;color:var(--gd)}
+  .logo span{width:40px;height:40px;border-radius:12px;background:var(--gd);display:grid;place-items:center;color:#9be3c3;font-size:20px}
+  @media print{body{background:#fff}.ring{display:none}}
+  @media (max-width:640px){.step{grid-template-columns:1fr}.num{width:46px;height:46px;font-size:1.3rem}}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><span aria-hidden="true">C</span>Canal Sugar Offboarding</div>
+  <h1>Set it up in 4 small steps</h1>
+  <p class="sub">About 2 minutes. Nothing to install. You do not need any technical knowledge.</p>
+  <span class="pill">Works on Windows 10 and 11</span>
+
+  <!-- 1 -->
+  <div class="step"><div class="num">1</div><div class="body">
+    <h3>Download the file</h3>
+    <p>Press <b class="k">Download</b> on the Google Drive page. You will get one file ending in <code>.zip</code>. It is saved in your <b class="k">Downloads</b> folder.</p>
+    <div class="stage">
+      <div class="win"><div class="bar"><i></i><i></i><i></i>&nbsp;Google Drive</div><div class="in">
+        <div class="row"><span class="ico zip">ZIP</span> Canal-Sugar-Offboarding-Windows.zip</div>
+        <div style="margin-top:10px;text-align:right"><span class="btn hot">Download</span></div>
+      </div></div>
+      <div class="arrow" aria-hidden="true">&rarr;</div>
+      <div class="win"><div class="bar"><i></i><i></i><i></i>&nbsp;Downloads</div><div class="in"><div class="row hot"><span class="ico zip">ZIP</span> Canal-Sugar-Offboarding-Windows.zip</div></div></div>
+    </div>
+  </div></div>
+
+  <!-- 2 -->
+  <div class="step"><div class="num">2</div><div class="body">
+    <h3>Unzip it</h3>
+    <p><b class="k">Right-click</b> the file, then choose <b class="k">Extract All&hellip;</b>, then press <b class="k">Extract</b>. A normal folder appears next to it.</p>
+    <div class="stage">
+      <div class="win"><div class="bar"><i></i><i></i><i></i>&nbsp;Downloads</div><div class="in"><div class="row hot"><span class="ico zip">ZIP</span> Canal-Sugar-Offboarding-Windows.zip</div></div></div>
+      <div class="menu"><div>Open</div><div class="hot">Extract All&hellip;</div><div>Copy</div><div>Properties</div></div>
+      <div class="arrow" aria-hidden="true">&rarr;</div>
+      <div class="win"><div class="bar"><i></i><i></i><i></i>&nbsp;Downloads</div><div class="in"><div class="row hot"><span class="ico fold">&#128193;</span> Canal-Sugar-Offboarding</div></div></div>
+    </div>
+  </div></div>
+
+  <!-- 3 -->
+  <div class="step"><div class="num">3</div><div class="body">
+    <h3>Right-click <u>Install Canal Sugar Offboarding</u> and choose <u>Run as administrator</u></h3>
+    <p>Open the new folder. Use the <b class="k">right</b> mouse button on the file shown below. On Windows 11, press <b class="k">Show more options</b> first if you do not see it.</p>
+    <div class="stage">
+      <div class="win" style="min-width:330px"><div class="bar"><i></i><i></i><i></i>&nbsp;Canal-Sugar-Offboarding</div><div class="in">
+        <div class="row hot"><span class="ico vbs">&#9654;</span> Install Canal Sugar Offboarding</div>
+        <div class="row dim"><span class="ico fold">&#128193;</span> files</div>
+        <div class="row dim"><span class="ico fold">&#128193;</span> More</div>
+        <div class="row dim"><span class="ico txt">TXT</span> README</div>
+      </div></div>
+      <div class="menu"><div>Open</div><div class="hot">Run as administrator</div><div>Copy</div><div>Properties</div></div>
+    </div>
+    <div class="tip">No "Run as administrator"? Just double-click the file. It asks Windows for permission by itself.</div>
+  </div></div>
+
+  <!-- 4 -->
+  <div class="step"><div class="num">4</div><div class="body">
+    <h3>Press Yes, then wait for "All done"</h3>
+    <p>Windows asks for permission. Press <b class="k">Yes</b>. A black window counts three steps and says <b class="k">All done</b>. Your web browser then opens the portal by itself.</p>
+    <div class="stage">
+      <div class="win"><div class="bar">User Account Control</div><div class="in">
+        <b>Do you want to allow this app to make changes to your device?</b>
+        <div style="margin-top:12px;text-align:right"><span class="btn hot">Yes</span> <span class="btn">No</span></div>
+      </div></div>
+      <div class="arrow" aria-hidden="true">&rarr;</div>
+      <div class="win" style="min-width:260px"><div class="bar">Canal Sugar Offboarding - Setup</div><div class="in" style="background:#0c0c0c;color:#d8f5e6;font:13px Consolas,monospace;line-height:1.6">
+        Step 1 of 3: copying the program...<br>Step 2 of 3: putting an icon on your desktop...<br>Step 3 of 3: opening the portal...<br><b style="color:#7be2b0">All done!</b>
+      </div></div>
+    </div>
+    <div class="tip">You can now delete the folder you downloaded. The program lives in <code>C:\Users\&lt;your name&gt;\program</code>.</div>
+  </div></div>
+
+  <div class="box">
+    <h3 style="margin-top:0">First time signing in</h3>
+    <p style="margin:0 0 6px">Sign in with the <b>email and starter password you were sent</b>. The portal then asks you to <b>choose your own password</b>.</p>
+    <p style="margin:0;color:var(--muted)">Write your new password down somewhere safe. There is no sign-up page: if you have no account, ask the Owner to add you.</p>
+  </div>
+
+  <h2>Every day after that: 2 steps</h2>
+  <p class="sub">This is how to run it from now on.</p>
+  <div class="step"><div class="num">1</div><div class="body">
+    <h3>Double-click the desktop icon</h3>
+    <div class="stage" style="min-height:110px">
+      <div style="text-align:center"><div class="ico vbs" style="width:64px;height:64px;border-radius:16px;font-size:26px;margin:0 auto 6px;background:var(--gd);color:#9be3c3">&#9654;</div><b>Canal Sugar<br>Offboarding</b></div>
+      <div class="arrow" aria-hidden="true">&rarr;</div>
+      <div>Your web browser opens the portal after a few seconds.</div>
+    </div>
+  </div></div>
+  <div class="step"><div class="num">2</div><div class="body">
+    <h3>Sign in and work. When you finish, close the browser.</h3>
+    <p style="margin:0">That is all. The program stops by itself a few minutes later. You need no internet.</p>
+  </div></div>
+
+  <h2>Something not working?</h2>
+  <details><summary>Windows says "Windows protected your PC"</summary><p>Press <b>More info</b>, then <b>Run anyway</b>. Windows only asks once, because the program is not signed.</p></details>
+  <details><summary>Nothing opens</summary><p>Open the <b>More</b> folder inside the program folder and double-click <b>Open with a window (for problems)</b>. Read the message in the black window, or send a photo of it to your IT team.</p></details>
+  <details><summary>The page looks empty or broken</summary><p>Hold the <b>Ctrl</b> key and press <b>F5</b>.</p></details>
+  <details><summary>My information disappeared</summary><p>Your information is saved in your web browser on this computer. Always open the portal from the desktop icon so it uses the same browser. Clearing "history and cookies" erases it, so export your sheet from <b>Reports</b> at the end of every day.</p></details>
+  <details><summary>My antivirus blocks it</summary><p>Ask your IT team to allow the folder <code>C:\Users\&lt;your name&gt;\program\Canal-Sugar-Offboarding</code>.</p></details>
+</main>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{ "name": "canal-sugar-gateway", "private": true, "type": "module", "scripts": { "start": "node --env-file-if-exists=.env server.mjs" }, "dependencies": { "mongodb": "^6.10.0" } }

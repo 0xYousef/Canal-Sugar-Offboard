@@ -1,0 +1,32 @@
+# Render Blueprint for the gateway. In Render: New -> Blueprint -> pick this repository.
+# The website itself goes on Vercel (see README.md).
+services:
+  - type: web
+    name: canal-sugar-gateway
+    runtime: node
+    region: frankfurt            # closest to Cairo
+    plan: starter                # the free plan sleeps when idle, which would skip the daily closing-time removal
+    rootDir: gateway
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.mjs
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: TZ
+        value: Africa/Cairo
+      - key: API_KEY               # copy this value into Vercel as VITE_DB_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: MONGODB_URI           # your Atlas connection string; typed in the Render dashboard, never committed
+        sync: false
+      - key: ALLOWED_ORIGIN        # your Vercel address, for example https://canal-sugar-offboarding.vercel.app
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_NAME
+        value: Owner
+      - key: DEFAULT_PASSWORD
+        sync: false

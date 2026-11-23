@@ -1,0 +1,38 @@
+{
+  "name": "canal-sugar-offboarding",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Canal Sugar Offboarding portal: leavers, SLA tasks, reports and a live shared sheet.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "guide:record": "VITE_SEED_DEMO=1 vite build --outDir dist-demo && node e2e/record/record.mjs",
+    "package:windows": "node scripts/make-windows-zip.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource-variable/sora": "^5.3.0",
+    "@heroui/react": "^3.2.8",
+    "@heroui/styles": "^3.2.8",
+    "@tailwindcss/vite": "^4.3.5",
+    "motion": "^14.14.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "read-excel-file": "^9.3.20",
+    "tailwindcss": "^4.3.5",
+    "write-excel-file": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.90.0",
+    "playwright": "^1.65.1",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  }
+}

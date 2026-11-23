@@ -1,0 +1,8 @@
+# Local test database: docker compose up -d, then MONGODB_URI=mongodb://127.0.0.1:27019
+services:
+  mongo:
+    image: mongo:7
+    ports: ["27019:27017"]
+    volumes: [mongo-data:/data/db]
+volumes:
+  mongo-data:

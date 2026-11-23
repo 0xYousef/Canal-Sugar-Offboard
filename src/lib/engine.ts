@@ -1,0 +1,184 @@
+// SLA engine. Pure functions: every function takes `state` and returns data. No DOM, no storage.
+import { addDays, addMonths, calendar, diff, localToday, type Cal } from './dates'
+import type { Condition, Field, Leaver, Reason, SlaResult, State, Step, TaskRow, TaskStatus } from './types'
+
+export const today = (s: State) => s.settings.reportDate || localToday()
+export const fieldByKey = (s: State, k: string) => s.fields.find((f) => f.key === k)
+export const reasonById = (s: State, id: string): Reason | undefined => s.reasons.find((r) => r.id === id)
+export const stepById = (s: State, id: string) => s.steps.find((x) => x.id === id)
+export const getLeaver = (s: State, id: string) => s.leavers.find((l) => l.id === id)
+
+// Value of a field for a leaver, following the field's `fallback` chain when blank.
+export function value(s: State, l: Leaver, key: string, depth = 0): string {
+  const v = l.values[key]
+  if (v !== undefined && v !== null && v !== '') return v
+  const f = fieldByKey(s, key)
+  if (f && f.fallback && depth < 5) return value(s, l, f.fallback, depth + 1)
+  return ''
+}
+
+export function conditionOk(_s: State, l: Leaver, c: Condition | null) {
+  if (!c || !c.field) return true
+  const v = String(l.values[c.field] ?? '')
+  switch (c.op) {
+    case 'filled': return v !== ''
+    case 'empty': return v === ''
+    case 'eq': return v === String(c.value ?? '')
+    case 'neq': return v !== String(c.value ?? '')
+    default: return true
+  }
+}
+
+export function applies(s: State, l: Leaver, st: Step) {
+  if (!st.active) return false
+  const r = reasonById(s, l.values.reason)
+  if (!r) return false
+  if (st.applies.mode === 'reasons' && !st.applies.reasons.includes(r.id)) return false
+  return conditionOk(s, l, st.condition)
+}
+
+export function hasSla(st: Step) {
+  return !!st.start && st.start.type !== 'none' && st.days !== null && st.days !== undefined && (st.days as unknown) !== ''
+}
+
+type Start = { kind: 'none' } | { kind: 'waiting' } | { kind: 'ok'; date: string }
+export function startOf(s: State, l: Leaver, st: Step): Start {
+  if (!hasSla(st)) return { kind: 'none' }
+  if (st.start.type === 'field') {
+    const v = value(s, l, st.start.field)
+    return v ? { kind: 'ok', date: v } : { kind: 'waiting' }
+  }
+  if (st.start.type === 'step') {
+    const rec = l.tasks[st.start.step]
+    return rec && rec.s === 'done' ? { kind: 'ok', date: rec.d } : { kind: 'waiting' }
+  }
+  return { kind: 'none' }
+}
+
+export function dueOf(s: State, l: Leaver, st: Step, cal: Cal = calendar(s.settings)) {
+  const start = startOf(s, l, st)
+  if (start.kind !== 'ok') return { due: null as string | null, waiting: start.kind === 'waiting', noSla: start.kind === 'none' }
+  const dir = st.when === 'Before' ? -1 : 1
+  const n = Number(st.days) || 0
+  return { due: st.unit === 'WD' ? cal.addWD(start.date, n, dir) : addDays(start.date, dir * n), waiting: false, noSla: false }
+}
+
+export function slaText(s: State, st: Step) {
+  if (!hasSla(st)) return 'No SLA (tracked only)'
+  let from = '?'
+  if (st.start.type === 'field') from = fieldByKey(s, st.start.field)?.label || st.start.field
+  if (st.start.type === 'step') from = 'completion of ' + st.start.step
+  const n = Number(st.days) || 0
+  if (n === 0) return 'On ' + from
+  return n + (st.unit === 'WD' ? ' working' : ' calendar') + (n === 1 ? ' day ' : ' days ') + st.when.toLowerCase() + ' ' + from
+}
+
+// Status of one step for one leaver.
+export function evalTask(s: State, l: Leaver, st: Step, cal: Cal = calendar(s.settings)): TaskRow {
+  const o: TaskRow = { step: st, leaver: l, applies: applies(s, l, st), due: null, status: 'N/A', sla: '', done: '', delay: null }
+  if (!o.applies) return o
+  const dd = dueOf(s, l, st, cal)
+  o.due = dd.due
+  const rec = l.tasks[st.id]
+  const t = today(s)
+  if (rec && rec.s === 'done') {
+    o.status = 'Done'
+    o.done = rec.d
+    if (o.due) {
+      o.delay = diff(rec.d, o.due)
+      o.sla = o.delay > 0 ? 'Late' : 'On Time'
+    } else o.sla = 'No SLA'
+    return o
+  }
+  if (rec && rec.s === 'waived') { o.status = 'Waived'; o.sla = 'Waived'; return o }
+  const past = !!o.due && diff(t, o.due) > 0
+  if (past && o.due) o.delay = diff(t, o.due)
+  if (rec && rec.s === 'blocked') { o.status = 'Blocked'; o.sla = past ? 'Breached' : 'Open'; return o }
+  if (dd.waiting) { o.status = 'Waiting'; o.sla = 'Open'; return o }
+  if (!o.due) { o.status = 'Open'; o.sla = 'No SLA'; return o }
+  if (past) { o.status = 'Overdue'; o.sla = 'Breached'; return o }
+  o.sla = 'Open'
+  o.status = diff(o.due, t) <= Number(s.settings.dueSoon) ? 'Due Soon' : 'Pending'
+  return o
+}
+
+export function leaverRows(s: State, l: Leaver) {
+  const cal = calendar(s.settings)
+  return s.steps.map((st) => evalTask(s, l, st, cal)).filter((r) => r.applies)
+}
+export const allRows = (s: State) => s.leavers.flatMap((l) => leaverRows(s, l))
+
+export type LeaverStatus = 'Set Reason' | 'Completed' | 'Overdue' | 'Blocked' | 'Due Soon' | 'Not Started' | 'In Progress'
+export interface Summary {
+  rows: TaskRow[]; total: number; base: number; waived: number; done: number; overdue: number
+  blocked: number; dueSoon: number; late: number; pct: number; open: number; status: LeaverStatus
+}
+
+export function summary(s: State, l: Leaver): Summary {
+  const rows = leaverRows(s, l)
+  const c = (f: (r: TaskRow) => boolean) => rows.filter(f).length
+  const waived = c((r) => r.status === 'Waived')
+  const done = c((r) => r.status === 'Done')
+  const overdue = c((r) => r.status === 'Overdue')
+  const blocked = c((r) => r.status === 'Blocked')
+  const dueSoon = c((r) => r.status === 'Due Soon')
+  const late = c((r) => r.sla === 'Late')
+  const base = rows.length - waived
+  let status: LeaverStatus
+  if (!reasonById(s, l.values.reason)) status = 'Set Reason'
+  else if (base > 0 && done === base) status = 'Completed'
+  else if (overdue) status = 'Overdue'
+  else if (blocked) status = 'Blocked'
+  else if (done === 0) status = dueSoon ? 'Due Soon' : 'Not Started'
+  else status = dueSoon ? 'Due Soon' : 'In Progress'
+  return { rows, total: rows.length, base, waived, done, overdue, blocked, dueSoon, late, pct: base ? Math.round((done / base) * 100) : 0, open: base - done, status }
+}
+
+export function complianceOf(rows: TaskRow[]) {
+  const on = rows.filter((r) => r.sla === ('On Time' as SlaResult)).length
+  const late = rows.filter((r) => r.sla === 'Late').length
+  const br = rows.filter((r) => r.sla === 'Breached').length
+  const tot = on + late + br
+  return { on, late, br, pct: tot ? Math.round((on / tot) * 100) : (null as number | null) }
+}
+
+export interface NoticeResult { text: string; tone: 'none' | 'good' | 'warn' | 'crit'; need?: string; months?: number }
+export function noticeCheck(s: State, l: Leaver): NoticeResult {
+  const r = reasonById(s, l.values.reason)
+  if (!r || !r.notice) return { text: 'n/a', tone: 'none' }
+  const n = s.settings.notice
+  const hire = value(s, l, n.hireField), req = value(s, l, n.requestField), end = value(s, l, n.endField)
+  if (!hire || !req || !end) return { text: 'Missing data', tone: 'warn' }
+  const years = diff(end, hire) / 365.25
+  const months = years <= Number(n.years) ? Number(n.short) : Number(n.long)
+  const need = addMonths(req, months)
+  return diff(end, need) >= 0 ? { text: 'OK', tone: 'good' } : { text: 'Short Notice', tone: 'crit', need, months }
+}
+
+export function missingInfo(s: State, l: Leaver) {
+  const m: string[] = []
+  const rid = l.values.reason
+  const r = reasonById(s, rid)
+  const notice = r && r.notice ? [s.settings.notice.hireField] : []
+  s.fields.forEach((f: Field) => {
+    const v = l.values[f.key]
+    const empty = v === undefined || v === null || v === ''
+    const need = f.required || (f.requiredFor || []).includes(rid) || notice.includes(f.key)
+    if (need && empty && !(f.fallback && value(s, l, f.key))) m.push(f.label)
+  })
+  return m
+}
+
+// Where is a field / step / group / reason used? Blocks unsafe deletes.
+export function usage(s: State) {
+  return {
+    field: (key: string) => s.steps.filter((x) => (x.start.type === 'field' && x.start.field === key) || (x.condition && x.condition.field === key)).map((x) => x.id)
+      .concat(s.fields.filter((f) => f.fallback === key).map((f) => 'field:' + f.key))
+      .concat(Object.values(s.settings.notice).includes(key) ? ['notice settings'] : []),
+    step: (id: string) => s.steps.filter((x) => x.start.type === 'step' && x.start.step === id).map((x) => x.id),
+    group: (g: string) => s.steps.filter((x) => x.group === g).map((x) => x.id),
+    reason: (id: string) => s.leavers.filter((l) => l.values.reason === id).map((l) => l.values.name || l.id),
+  }
+}
+
+export type { TaskStatus }
