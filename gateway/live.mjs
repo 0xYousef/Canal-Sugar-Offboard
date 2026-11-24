@@ -9,7 +9,13 @@ import { authUser } from './accounts.mjs'
 const KEY = /^[\w-]{1,80}$/
 const known = new Map() // "db|collection" -> { db, base }: every sheet that has been used, checked by the timer
 
-const clock = () => { const d = new Date(); return { date: d.toLocaleDateString('en-CA'), min: d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 } }
+// The closing time is read in this time zone (serverless hosts run on UTC, so it is set here, not by TZ).
+const ZONE = process.env.APP_TZ || 'Africa/Cairo'
+const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const clock = () => {
+  const p = Object.fromEntries(fmt.formatToParts(new Date()).map((x) => [x.type, x.value]))
+  return { date: `${p.year}-${p.month}-${p.day}`, min: Number(p.hour) * 60 + Number(p.minute) + Number(p.second) / 60 }
+}
 const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m }
 const GOOD_TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -29,11 +35,20 @@ export function makeLive(db, base) {
     }).catch(() => undefined)
     return rev
   }
+  /** Removes the sheet if its closing time has passed today. The claim is atomic, so only one request does it. */
+  async function purgeIfDue() {
+    const now = clock(), m = await C.findOne({ _id: 'meta' })
+    if (!m?.enabled || m.lastPurge === now.date || now.min < toMin(m.endTime)) return false
+    const won = await C.findOneAndUpdate({ _id: 'meta', enabled: true, lastPurge: { $ne: now.date } }, { $set: { lastPurge: now.date } })
+    if (!won) return false
+    await purge('System'); return true
+  }
   const publicMeta = (m) => ({ rev: m.rev, epoch: m.epoch, endTime: m.endTime, enabled: !!m.enabled, nowMin: clock().min, sheet: m.sheet ?? null, purgedAt: m.purgedAt ?? null })
 
   async function handle(req, u, b) {
     const user = await authUser(db, base, req)
     if (!user) return [401, { error: 'Sign in again.' }]
+    await purgeIfDue()   // no background timer on serverless hosts: the first request after closing time removes the sheet
     const path = u.pathname, admin = user.owner || user.role === 'Admin'
     const m = await meta()
 
@@ -89,7 +104,7 @@ export function makeLive(db, base) {
     }
     return [404, { error: 'Not found.' }]
   }
-  return { handle, purge }
+  return { handle, purge, purgeIfDue }
 }
 
 /** Once a day, at the closing time, remove the sheet. Checked every 20 seconds for every sheet in use. */

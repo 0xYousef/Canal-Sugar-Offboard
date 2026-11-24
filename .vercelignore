@@ -2,9 +2,13 @@
 .env.*
 !.env.example
 node_modules
-gateway
 e2e
 samples
 scripts
 SETUP.md
 render.yaml
+gateway/*.txt
+gateway/Dockerfile
+gateway/docker-compose.yml
+gateway/README.md
+gateway/.dockerignore

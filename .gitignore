@@ -32,3 +32,7 @@ release/
 dist-demo/
 gateway/.env
 gateway/node_modules
+.vercel
+.env*
+gateway/render-env.txt
+gateway/vercel-env.txt
