@@ -1,6 +1,8 @@
 // Live sheet: everyone signed in works on the same leavers. Changes are sent to the gateway a moment after they
 // are made, and every computer asks for what is new every few seconds. Only the parts that changed are sent
 // (a field, or one task), so two people working on the same leaver do not overwrite each other.
+import { normalizeFlow } from './flowDefaults'
+import { ensureSnapshot } from './snapshot'
 import { useSyncExternalStore } from 'react'
 import { toast } from '@heroui/react'
 import { atlasCall, atlasQuery, atlasReady } from './atlas'
@@ -33,6 +35,14 @@ export function minutesToClose(i: LiveInfo) {
   return h * 60 + m - now
 }
 
+/** True once the closing time has passed today (only when the daily removal is switched on). Adding leavers is closed until the next day. */
+export const afterClose = (i: LiveInfo, st?: { lockAfterClose?: boolean }) => {
+  if (!(st?.lockAfterClose ?? i.enabled) || !i.readAt) return false
+  const now = i.nowMin + (Date.now() - i.readAt) / 60000
+  const [h, m] = i.endTime.split(':').map(Number)
+  return now >= h * 60 + m
+}
+
 type Snap = { v: Record<string, string>; t: Record<string, string> }
 let synced = new Map<string, Snap>()           // what the server holds, per leaver
 let cfgSynced = ''
@@ -41,7 +51,7 @@ let timer: ReturnType<typeof setInterval> | undefined, push: ReturnType<typeof s
 let pushing = false, running = false, sheetNote: string | null = null
 
 const snap = (l: Leaver): Snap => ({ v: { ...l.values }, t: Object.fromEntries(Object.entries(l.tasks).map(([k, r]) => [k, JSON.stringify(r)])) })
-const cfgOf = () => ({ settings: state.settings, reasons: state.reasons, groups: state.groups, fields: state.fields, steps: state.steps })
+const cfgOf = () => ({ settings: state.settings, reasons: state.reasons, groups: state.groups, members: state.members ?? {}, fields: state.fields, steps: state.steps, slaVersions: state.slaVersions ?? {} })
 
 /** Compare the screen with what the server holds. Returns the changes to send, and the snapshot to keep afterwards. */
 function diff() {
@@ -102,7 +112,9 @@ async function pull() {
           if (i >= 0) state.leavers[i] = l; else state.leavers.push(l)
           synced.set(d.id, snap(l))
         }
-        if (j.cfg) { Object.assign(state, j.cfg); cfgSynced = JSON.stringify(cfgOf()) }
+        if (j.cfg) { Object.assign(state, j.cfg); state.settings.flow = normalizeFlow(state.settings.flow); cfgSynced = JSON.stringify(cfgOf()) }
+        // A leaver that arrives without rules (made before they were frozen) gets the current ones.
+        state.leavers.forEach((x) => ensureSnapshot(state, x))
       })
     }
     since = j.rev; epoch = j.epoch

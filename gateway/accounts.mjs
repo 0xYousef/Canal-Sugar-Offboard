@@ -23,7 +23,9 @@ const verify = (t) => {
   try { const d = JSON.parse(Buffer.from(p, 'base64url').toString()); return d.exp > Date.now() ? d : null } catch { return null }
 }
 
-const pub = (d) => ({ id: d._id, name: d.name, email: d.email, role: d.role, active: d.active, owner: !!d.owner, mustChange: !!d.mustChange, createdAt: d.createdAt, lastLogin: d.lastLogin })
+/** Remember when someone was last active, at most every 30 seconds, so "online" means seen in the last couple of minutes. */
+const touch = (U, d) => { if (!d.lastSeen || Date.now() - new Date(d.lastSeen).getTime() > 30_000) { d.lastSeen = new Date().toISOString(); U.updateOne({ _id: d._id }, { $set: { lastSeen: d.lastSeen } }).catch(() => {}) } return d }
+const pub = (d) => ({ id: d._id, name: d.name, email: d.email, role: d.role, active: d.active, owner: !!d.owner, mustChange: !!d.mustChange, createdAt: d.createdAt, lastLogin: d.lastLogin, firstName: d.firstName, lastName: d.lastName, job: d.job, seniority: d.seniority, lastSeen: d.lastSeen, archive: !!d.archive })
 const newId = () => 'u' + Date.now().toString(36) + randomBytes(3).toString('hex')
 const EMAIL = /^\S+@\S+\.\S+$/
 const seeding = new Map() // the seed job in flight for a database+collection, shared by requests that arrive together
@@ -53,7 +55,7 @@ export function makeAccounts(db, base) {
   const me = async (req) => {
     const t = verify((req.headers.authorization ?? '').replace(/^Bearer /, ''))
     const d = t && (await U.findOne({ _id: t.uid }))
-    return d && d.active ? d : null
+    return d && d.active ? touch(U, d) : null
   }
   const findLogin = async (typed) => {
     const t = typed.trim().toLowerCase()
@@ -95,7 +97,10 @@ export function makeAccounts(db, base) {
     if (path === '/auth/profile' && m === 'POST') {
       const name = String(b.name ?? '').trim()
       if (!name) return err(400, 'Enter a name.')
-      await U.updateOne({ _id: user._id }, { $set: { name } }); return [200, { ok: true }]
+      const t = (v) => String(v ?? '').trim().slice(0, 80)
+      const set = { name: name.slice(0, 160) }
+      for (const k of ['firstName', 'lastName', 'job', 'seniority']) if (typeof b[k] === 'string') set[k] = t(b[k])
+      await U.updateOne({ _id: user._id }, { $set: set }); return [200, { ok: true }]
     }
     if (path === '/auth/password' && m === 'POST') {
       const next = String(b.next ?? '')
@@ -131,7 +136,7 @@ export function makeAccounts(db, base) {
       if (!EMAIL.test(email)) return err(400, 'Enter a valid email address.')
       if (pw.length < 8) return err(400, 'Password needs at least 8 characters.')
       if (await U.findOne({ email })) return err(400, 'Another profile already uses this email.')
-      const d = { _id: newId(), name, email, role: String(b.role || 'Admin'), active: b.active !== false, owner: false, mustChange: true, pass: await hashPw(pw), createdAt: new Date().toISOString() }
+      const d = { _id: newId(), name, email, role: String(b.role || 'Admin'), active: b.active !== false, archive: !!b.archive, owner: false, mustChange: true, pass: await hashPw(pw), createdAt: new Date().toISOString() }
       await U.insertOne(d); return [200, { user: pub(d) }]
     }
     const one = path.match(/^\/users\/([\w-]+)$/)
@@ -144,7 +149,7 @@ export function makeAccounts(db, base) {
       if (await U.findOne({ email, _id: { $ne: d._id } })) return err(400, 'Another profile already uses this email.')
       if (d.owner && (!active || role !== 'Admin')) return err(400, 'The Owner keeps an active profile and the Admin role. Transfer ownership first.')
       if (d.role === 'Admin' && (role !== 'Admin' || !active) && (await activeAdmins()) <= 1) return err(400, 'Keep at least one active Admin.')
-      const set = { name, email, role, active }
+      const set = { name, email, role, active, archive: !!b.archive }
       if (b.password) { if (String(b.password).length < 8) return err(400, 'Password needs at least 8 characters.'); set.pass = await hashPw(String(b.password)); set.mustChange = true }
       await U.updateOne({ _id: d._id }, { $set: set }); return [200, { ok: true }]
     }
@@ -163,6 +168,7 @@ export function makeAccounts(db, base) {
 /** The signed-in, active person behind a request, or null. Used by the live-sheet endpoints. */
 export async function authUser(db, base, req) {
   const t = verify((req.headers.authorization ?? '').replace(/^Bearer /, ''))
-  const d = t && (await db.collection(base + '_users').findOne({ _id: t.uid }))
-  return d && d.active ? d : null
+  const U = db.collection(base + '_users')
+  const d = t && (await U.findOne({ _id: t.uid }))
+  return d && d.active ? touch(U, d) : null
 }

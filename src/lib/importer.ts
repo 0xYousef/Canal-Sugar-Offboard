@@ -1,5 +1,6 @@
 // Turn a downloaded file into leavers: parse (CSV / Excel / JSON), map columns to fields, import.
 import { fieldByKey } from './engine'
+import { ensureSnapshot } from './snapshot'
 import { uid } from './store'
 import type { Field, Leaver, State } from './types'
 
@@ -112,14 +113,48 @@ export function buildPreview(s: State, table: Table, map: Record<number, string>
 const findExisting = (s: State, v: Record<string, string>) =>
   s.leavers.find((l) => (v.empId && l.values.empId === v.empId) || (!v.empId && v.name && l.values.name?.toLowerCase() === v.name.toLowerCase()))
 
-/** Rows with errors are skipped. Existing leavers are updated only when `update` is true. */
-export function runImport(s: State, rows: PreviewRow[], update: boolean) {
-  let added = 0, updated = 0, skipped = 0
+export type ImportMode = 'append' | 'replace'
+
+/** What "replace" would do, judged by Employee ID (name only when a row has no ID). */
+export function replacePlan(s: State, rows: PreviewRow[]) {
+  const ok = rows.filter((r) => r.match !== 'skip' && !r.errors.length)
+  const keep = new Set<Leaver>()
+  ok.forEach((r) => { const ex = findExisting(s, r.values); if (ex) keep.add(ex) })
+  const removed = s.leavers.filter((l) => !keep.has(l))
+  return { removed, matched: keep.size, added: ok.filter((r) => !findExisting(s, r.values)).length }
+}
+
+/** Rows with errors are skipped. "append" adds only employees that are not in the portal yet and leaves existing ones untouched.
+ *  "replace" also updates matches and deletes every leaver that is not in the file. */
+export function runImport(s: State, rows: PreviewRow[], mode: ImportMode) {
+  const replace = mode === 'replace'
+  let skipped = 0, removed = 0
+  const addedRows: Record<string, string>[] = [], existingRows: Record<string, string>[] = []
+  if (replace) {
+    const drop = new Set(replacePlan(s, rows).removed)
+    removed = drop.size
+    s.leavers = s.leavers.filter((l) => !drop.has(l))
+  }
   rows.forEach((r) => {
     if (r.match === 'skip' || r.errors.length) return void skipped++
     const ex = findExisting(s, r.values)
-    if (ex) { if (!update) return void skipped++; Object.assign(ex.values, r.values); updated++ }
-    else { s.leavers.push({ id: uid(), values: { ...r.values }, tasks: {} } as Leaver); added++ }
+    if (ex) { existingRows.push(r.values); if (replace) Object.assign(ex.values, r.values) }
+    else { s.leavers.push({ id: uid(), values: { ...r.values }, tasks: {} } as Leaver); ensureSnapshot(s, s.leavers[s.leavers.length - 1]); addedRows.push(r.values) }
   })
-  return { added, updated, skipped }
+  return { added: addedRows.length, updated: replace ? existingRows.length : 0, existing: existingRows.length, skipped, removed, addedRows, existingRows }
+}
+
+/** Two sheets: employees that were appended, and employees that were already in the portal. */
+export async function exportImportReport(s: State, added: Record<string, string>[], existing: Record<string, string>[], fileName: string) {
+  const { default: write } = await import('write-excel-file/browser')
+  const cols = s.fields.filter((f) => [...added, ...existing].some((v) => v[f.key]))
+  const sheet = (rows: Record<string, string>[]) => [
+    cols.map((f) => ({ value: f.label, fontWeight: 'bold' as const })),
+    ...rows.map((v) => cols.map((f) => ({ value: v[f.key] ?? '' }))),
+  ]
+  const columns = cols.map(() => ({ width: 22 }))
+  await write([
+    { data: sheet(added), sheet: 'New employees', columns },
+    { data: sheet(existing), sheet: 'Already existed', columns },
+  ]).toFile(`import-${fileName.replace(/\.[^.]+$/, '')}-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }

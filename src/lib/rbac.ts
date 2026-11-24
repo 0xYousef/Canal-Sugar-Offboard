@@ -20,7 +20,14 @@ export const MODULES: { id: Module; label: string; perms: Perm[]; edit?: string;
 export const PERM_LABEL: Record<Perm, string> = { view: 'View', edit: 'Edit', action: 'Take action' }
 export const ADMIN = 'Admin'
 
-export interface Role { name: string; perms: Partial<Record<Module, Perm[]>>; teams: string[] | null }
+/** Extra rights, switched on per role. Admin and the Owner always have them. */
+export type Extra = 'import' | 'removeFile' | 'restore'
+export const EXTRAS: { id: Extra; label: string; text: string }[] = [
+  { id: 'import', label: 'Import leavers', text: 'Load a leaver list from a CSV, Excel or JSON file (Settings, Import leavers).' },
+  { id: 'removeFile', label: 'Remove the shared file', text: 'Delete the shared sheet from the server for everyone, before closing time.' },
+  { id: 'restore', label: 'Restore archived leavers', text: 'Bring a leaver back from the archive. They must also be allowed to see the archive.' },
+]
+export interface Role { name: string; perms: Partial<Record<Module, Perm[]>>; teams: string[] | null; extras?: Extra[] }
 
 const KEY = 'offboarding.rbac.v3'
 let roles: Role[] = []
@@ -43,6 +50,8 @@ export function useRbac() {
 }
 
 export const isOwner = () => session.owner
+/** Archived leavers are hidden from everyone, including Admins, until the Owner allows a person to see them. */
+export const canSeeArchive = () => session.owner || session.archive
 export const allRoles = () => roles
 export const roleNames = () => [ADMIN, ...roles.map((r) => r.name)]
 const roleOf = (name: string) => roles.find((r) => r.name === name)
@@ -54,8 +63,10 @@ export function can(m: Module, p: Perm) {
   const r = roleOf(session.role)
   return (r?.perms[m] ?? (p === 'view' && m !== 'logs' ? ['view'] : [])).includes(p)
 }
+/** An extra right: the Owner and Admins always have it, other roles only when it is switched on. */
+export const hasExtra = (x: Extra) => isAdmin() || !!roleOf(session.role)?.extras?.includes(x)
 /** The Settings page opens for anyone who may see settings or the activity log (the log lives inside it). */
-export const canSee = (m: Module) => (m === 'settings' ? can('settings', 'view') || can('logs', 'view') : can(m, 'view'))
+export const canSee = (m: Module) => ((m as string) === 'profile' ? true : m === 'settings' ? can('settings', 'view') || can('logs', 'view') : can(m, 'view'))
 /** Take action on one task: needs "take action" here, and the task's team must be one the role covers. */
 export function canAct(m: Module, group: string) {
   if (isAdmin()) return true
@@ -109,6 +120,11 @@ export function setPerm(role: string, m: Module, p: Perm, on: boolean) {
   })
   log('Access changed', `${role}: ${PERM_LABEL[p]} on ${MODULES.find((x) => x.id === m)!.label} turned ${on ? 'on' : 'off'}.`)
   persist(); notify()
+}
+export function setExtra(role: string, x: Extra, on: boolean) {
+  if (!guard()) return
+  roles = roles.map((r) => (r.name === role ? { ...r, extras: on ? [...new Set([...(r.extras ?? []), x])] : (r.extras ?? []).filter((e) => e !== x) } : r))
+  log('Access changed', `${role}: ${EXTRAS.find((e) => e.id === x)!.label} turned ${on ? 'on' : 'off'}.`); persist(); notify()
 }
 export function setTeams(role: string, teams: string[] | null) {
   if (!guard()) return

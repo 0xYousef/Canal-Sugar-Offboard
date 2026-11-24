@@ -1,6 +1,7 @@
 // Default configuration and demo data. Everything here is only a starting point:
 // reasons, groups, fields and SLA steps are all editable in Settings.
 import type { Field, Reason, State, Step, Leaver } from './types'
+import { DEFAULT_FLOW } from './flowDefaults'
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
 export const REASONS: Reason[] = [
@@ -118,6 +119,7 @@ export function defaultState(): State {
     settings: {
       weekend: 'FS', dueSoon: 2, reportDate: '', holidays: defaultHolidays(),
       notice: { hireField: 'hireDate', requestField: 'requestDate', endField: 'termDate', years: 10, short: 2, long: 3 },
+      flow: DEFAULT_FLOW,
     },
     reasons: REASONS, groups: GROUPS, fields: FIELDS, steps: STEPS, leavers: import.meta.env.VITE_SEED_DEMO ? demoLeavers() : [],
   });

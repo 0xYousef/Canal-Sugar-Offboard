@@ -18,11 +18,12 @@ export default function Dashboard() {
   const { go } = useNav()
   const v = getVersion()
   const rows = useMemo(() => E.allRows(s), [s, v])
-  const sums = useMemo(() => s.leavers.map((l) => E.summary(s, l)), [s, v])
+  const leavers = useMemo(() => E.liveLeavers(s), [s, v])
+  const sums = useMemo(() => leavers.map((l) => E.summary(s, l)), [s, v, leavers])
   const open = (r: (typeof rows)[number]) => !['Done', 'Waived'].includes(r.status)
   const count = (st: string) => rows.filter((r) => r.status === st).length
   const comp = E.complianceOf(rows)
-  const missing = s.leavers.filter((l) => E.missingInfo(s, l).length)
+  const missing = leavers.filter((l) => E.missingInfo(s, l).length)
   const overdue = rows.filter((r) => r.status === 'Overdue').sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10)
 
   const [doing, setDoing] = useState<TaskRow | null>(null)
@@ -52,7 +53,7 @@ export default function Dashboard() {
                 <div className="truncate font-medium">{r.step.name}</div>
                 <div className="text-sm text-muted">
                   <NameBtn onPress={() => go('leavers', r.leaver.id)}>{r.leaver.values.name}</NameBtn>
-                  {' · '}{r.step.group}{r.due ? ` · due ${fmt(r.due)}` : ''}{r.delay ? ` · ${r.delay} d late` : ''}
+                  {' · '}{r.step.group}{r.due ? ` · due ${fmt(r.due)}` : ''}{r.delay ? ` · ${r.delay} working d late` : ''}
                 </div>
               </div>
               <StatusChip text={r.status} />
@@ -119,8 +120,8 @@ export default function Dashboard() {
       <SectionTitle title="Leaver progress" aside={<SeeAll label="All leavers" onPress={() => go('leavers')} />} />
       <Card>
         <Card.Content className="grid gap-4">
-          {!s.leavers.length && <Empty>No leavers yet.</Empty>}
-          {s.leavers.map((l, i) => (
+          {!leavers.length && <Empty>No leavers yet.</Empty>}
+          {leavers.map((l, i) => (
             <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap">
               <NameBtn className="min-w-44" onPress={() => go('leavers', l.id)}>{l.values.name || '(no name)'}</NameBtn>
               <div className="min-w-32 flex-1"><Meter pct={sums[i].pct} label={`${l.values.name} progress`} /></div>

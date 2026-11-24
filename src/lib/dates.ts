@@ -53,6 +53,17 @@ export function calendar(settings: Settings) {
     }
     return cur
   }
-  return { isOff, addWD }
+  // Working days between two dates: how many working days lie after b up to and including a (negative when a is before b).
+  // Weekends and holidays add nothing, so a deadline missed on a Thursday is not "2 days late" on a weekend.
+  const wdDiff = (a: string, b: string) => {
+    if (a === b) return 0
+    const dir: 1 | -1 = a > b ? 1 : -1
+    let cur = b, n = 0
+    while (cur !== a) { cur = addDays(cur, dir); if (!isOff(cur)) n++ }
+    return dir * n
+  }
+  // A date that falls on a weekend or holiday moves to the next working day (or the previous one, for "before" rules).
+  const toWorking = (s: string, dir: 1 | -1) => { let cur = s; for (let i = 0; i < 400 && isOff(cur); i++) cur = addDays(cur, dir); return cur }
+  return { isOff, addWD, wdDiff, toWorking }
 }
 export type Cal = ReturnType<typeof calendar>

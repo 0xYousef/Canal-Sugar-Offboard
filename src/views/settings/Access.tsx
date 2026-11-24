@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button, Chip } from '@heroui/react'
 import { useApp } from '../../lib/store'
-import { MODULES, PERM_LABEL, TEMPLATES, addRole, allRoles, removeRole, renameRoleTo, setPerm, setTeams, useRbac, type Perm, type Template } from '../../lib/rbac'
-import { peopleWithRole, refreshUsers, renameRole } from '../../lib/auth'
+import { EXTRAS, MODULES, PERM_LABEL, TEMPLATES, addRole, allRoles, removeRole, renameRoleTo, setExtra, setPerm, setTeams, useRbac, type Perm, type Template } from '../../lib/rbac'
+import { allUsers, peopleWithRole, refreshUsers, renameRole } from '../../lib/auth'
 import { Check, Confirm, DataTable, Dialog, Pick, TextInput, Toggle } from '../../ui/kit'
 
 const PERMS: Perm[] = ['view', 'edit', 'action']
@@ -57,6 +57,19 @@ export default function Access() {
             })} />
 
           <div className="panel mt-4 rounded-3xl p-5">
+            <h3 className="font-semibold">Extra rights</h3>
+            <p className="mb-3 mt-1 text-sm text-muted">Single actions that sit outside the sections above. The Owner and Admins always have them.</p>
+            <div className="grid gap-3">
+              {EXTRAS.map((x) => (
+                <div key={x.id} className="flex items-center gap-3">
+                  <Toggle on={!!role.extras?.includes(x.id)} label={`${role.name}: ${x.label}`} onChange={(v) => setExtra(role.name, x.id, v)} />
+                  <span className="text-sm"><b>{x.label}.</b> <span className="text-muted">{x.text}</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel mt-4 rounded-3xl p-5">
             <h3 className="font-semibold">Teams this role can take action for</h3>
             <p className="mb-3 mt-1 text-sm text-muted">Applies to marking tasks done, waived or blocked. Choose every team, or only some.</p>
             <Check label="Every team" checked={role.teams === null} onChange={(v) => setTeams(role.name, v ? null : [])} />
@@ -70,6 +83,16 @@ export default function Access() {
           </div>
         </>
       )}
+
+      <div className="panel mt-4 rounded-3xl p-5">
+        <h3 className="font-semibold">Who can see archived leavers</h3>
+        <p className="mb-3 mt-1 text-sm text-muted">Archived leavers are hidden from everyone else, Admins included. Change this per person on the People tab.</p>
+        <div className="flex flex-wrap gap-2">
+          {allUsers().filter((u) => u.owner || u.archive).map((u) => (
+            <Chip key={u.id} size="sm" variant="soft"><Chip.Label>{u.name}{u.owner ? ' (Owner)' : ''} · {u.role}</Chip.Label></Chip>
+          ))}
+        </div>
+      </div>
 
       <Dialog open={adding} onClose={() => setAdding(false)} title="Add a role"
         footer={<><Button variant="tertiary" onPress={() => setAdding(false)}>Cancel</Button>

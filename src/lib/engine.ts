@@ -1,5 +1,6 @@
 // SLA engine. Pure functions: every function takes `state` and returns data. No DOM, no storage.
 import { addDays, addMonths, calendar, diff, localToday, type Cal } from './dates'
+import { SLA_KEY } from './snapshot'
 import type { Condition, Field, Leaver, Reason, SlaResult, State, Step, TaskRow, TaskStatus } from './types'
 
 export const today = (s: State) => s.settings.reportDate || localToday()
@@ -7,6 +8,13 @@ export const fieldByKey = (s: State, k: string) => s.fields.find((f) => f.key ==
 export const reasonById = (s: State, id: string): Reason | undefined => s.reasons.find((r) => r.id === id)
 export const stepById = (s: State, id: string) => s.steps.find((x) => x.id === id)
 export const getLeaver = (s: State, id: string) => s.leavers.find((l) => l.id === id)
+/** An archived leaver is kept but hidden: out of the lists, tasks, dashboard and reports. */
+export const ARCHIVED = '__archived'
+export const isArchived = (l: Leaver) => !!l.values[ARCHIVED]
+export const liveLeavers = (s: State) => s.leavers.filter((l) => !isArchived(l))
+export const archivedLeavers = (s: State) => s.leavers.filter(isArchived)
+/** Set when the Owner restores a leaver, so a finished leaver is not archived again straight away. */
+export const KEEP = '__keepLive'
 
 // Value of a field for a leaver, following the field's `fallback` chain when blank.
 export function value(s: State, l: Leaver, key: string, depth = 0): string {
@@ -29,12 +37,12 @@ export function conditionOk(_s: State, l: Leaver, c: Condition | null) {
   }
 }
 
-export function applies(s: State, l: Leaver, st: Step) {
-  if (!st.active) return false
-  const r = reasonById(s, l.values.reason)
-  if (!r) return false
-  if (st.applies.mode === 'reasons' && !st.applies.reasons.includes(r.id)) return false
-  return conditionOk(s, l, st.condition)
+/** The rules a leaver has: the version frozen when they were created. Old records without one read the current rules. */
+export const stepsOf = (s: State, l: Leaver): Step[] => s.slaVersions?.[l.values[SLA_KEY]] ?? s.steps
+export const stepOf = (s: State, l: Leaver, id: string) => stepsOf(s, l).find((x) => x.id === id)
+/** A leaver has the rules as they were when created. A rule is left out for one leaver by switching it off for them. */
+export function applies(_s: State, l: Leaver, st: Step) {
+  return st.active && l.tasks[st.id]?.s !== 'off'
 }
 
 export function hasSla(st: Step) {
@@ -42,6 +50,15 @@ export function hasSla(st: Step) {
 }
 
 type Start = { kind: 'none' } | { kind: 'waiting' } | { kind: 'ok'; date: string }
+/** True when `from`'s clock starts from `to`'s completion, directly or through other rules. */
+export function clockLoops(steps: Step[], from: string, to: string, seen = new Set<string>()): boolean {
+  if (from === to) return true
+  if (seen.has(from)) return false
+  seen.add(from)
+  const x = steps.find((y) => y.id === from)
+  return !!x && x.start.type === 'step' && clockLoops(steps, x.start.step, to, seen)
+}
+
 export function startOf(s: State, l: Leaver, st: Step): Start {
   if (!hasSla(st)) return { kind: 'none' }
   if (st.start.type === 'field') {
@@ -49,7 +66,14 @@ export function startOf(s: State, l: Leaver, st: Step): Start {
     return v ? { kind: 'ok', date: v } : { kind: 'waiting' }
   }
   if (st.start.type === 'step') {
-    const rec = l.tasks[st.start.step]
+    // Two rules whose clocks start from each other would wait forever; such a clock is treated as not started by a step.
+    if (clockLoops(stepsOf(s, l), st.start.step, st.id)) return { kind: 'none' }
+    // The rule this clock starts from may not exist for this employee (other reason, other condition, switched off) or may have been waived.
+    // Then there is nothing to wait for, so the employee is not held up by it.
+    const from = stepOf(s, l, st.start.step)
+    if (!from || !applies(s, l, from)) return { kind: 'none' }
+    const rec = l.tasks[from.id]
+    if (rec && rec.s === 'waived') return { kind: 'none' }
     return rec && rec.s === 'done' ? { kind: 'ok', date: rec.d } : { kind: 'waiting' }
   }
   return { kind: 'none' }
@@ -60,7 +84,9 @@ export function dueOf(s: State, l: Leaver, st: Step, cal: Cal = calendar(s.setti
   if (start.kind !== 'ok') return { due: null as string | null, waiting: start.kind === 'waiting', noSla: start.kind === 'none' }
   const dir = st.when === 'Before' ? -1 : 1
   const n = Number(st.days) || 0
-  return { due: st.unit === 'WD' ? cal.addWD(start.date, n, dir) : addDays(start.date, dir * n), waiting: false, noSla: false }
+  // A deadline never falls on a weekend or holiday: counted in working days it cannot, and a calendar-day count is moved to the next working day.
+  const raw = st.unit === 'WD' ? cal.addWD(start.date, n, dir) : addDays(start.date, dir * n)
+  return { due: cal.toWorking(raw, dir), waiting: false, noSla: false }
 }
 
 export function slaText(s: State, st: Step) {
@@ -85,28 +111,30 @@ export function evalTask(s: State, l: Leaver, st: Step, cal: Cal = calendar(s.se
     o.status = 'Done'
     o.done = rec.d
     if (o.due) {
-      o.delay = diff(rec.d, o.due)
+      o.delay = cal.wdDiff(rec.d, o.due)
       o.sla = o.delay > 0 ? 'Late' : 'On Time'
     } else o.sla = 'No SLA'
     return o
   }
   if (rec && rec.s === 'waived') { o.status = 'Waived'; o.sla = 'Waived'; return o }
-  const past = !!o.due && diff(t, o.due) > 0
-  if (past && o.due) o.delay = diff(t, o.due)
+  // Lateness is counted in working days, so weekends and holidays never make a task late or overdue.
+  const late = o.due ? cal.wdDiff(t, o.due) : 0
+  const past = !!o.due && late > 0
+  if (past) o.delay = late
   if (rec && rec.s === 'blocked') { o.status = 'Blocked'; o.sla = past ? 'Breached' : 'Open'; return o }
   if (dd.waiting) { o.status = 'Waiting'; o.sla = 'Open'; return o }
   if (!o.due) { o.status = 'Open'; o.sla = 'No SLA'; return o }
   if (past) { o.status = 'Overdue'; o.sla = 'Breached'; return o }
   o.sla = 'Open'
-  o.status = diff(o.due, t) <= Number(s.settings.dueSoon) ? 'Due Soon' : 'Pending'
+  o.status = cal.wdDiff(o.due, t) <= Number(s.settings.dueSoon) ? 'Due Soon' : 'Pending'
   return o
 }
 
 export function leaverRows(s: State, l: Leaver) {
   const cal = calendar(s.settings)
-  return s.steps.map((st) => evalTask(s, l, st, cal)).filter((r) => r.applies)
+  return stepsOf(s, l).map((st) => evalTask(s, l, st, cal)).filter((r) => r.applies)
 }
-export const allRows = (s: State) => s.leavers.flatMap((l) => leaverRows(s, l))
+export const allRows = (s: State) => liveLeavers(s).flatMap((l) => leaverRows(s, l))
 
 export type LeaverStatus = 'Set Reason' | 'Completed' | 'Overdue' | 'Blocked' | 'Due Soon' | 'Not Started' | 'In Progress'
 export interface Summary {
@@ -182,3 +210,14 @@ export function usage(s: State) {
 }
 
 export type { TaskStatus }
+
+/** A leaver whose tasks are all done (100%) is archived automatically. Returns true when something changed. */
+export function autoArchive(s: State): boolean {
+  let changed = false
+  for (const l of s.leavers) {
+    if (isArchived(l) || l.values[KEEP]) continue
+    const sm = summary(s, l)
+    if (sm.base > 0 && sm.pct === 100) { l.values[ARCHIVED] = new Date().toISOString(); l.values[ARCHIVED + 'By'] = 'Auto (100%)'; changed = true }
+  }
+  return changed
+}

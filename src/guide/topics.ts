@@ -89,7 +89,7 @@ export const TOPICS: Topic[] = [
       'Open Settings, go to SLA rules, and press Add SLA rule.',
       'Write what needs to be done and choose which team is responsible.',
       'Say when the clock starts, for example on the last working day, and how many days the team gets. You can count working days only, or every day.',
-      'Choose which reasons for leaving the rule applies to. If you need to be more specific, add a condition, like "has a company car".',
+      'Every leaver gets every rule. To leave a rule out, switch it off in the rules list (everyone) or on a leaver\'s own page (just them).',
       'Before you save, the preview shows the due date for a real person, so you can check it makes sense. Then press Save rule, and everyone\'s deadlines update at once.',
     ],
     example: `Security should collect the ID badge within 2 working days of the last working day. You add a rule called "Return ID badge", team Security, clock starts on Last working day, 2 working days after. For a leaver whose last day is Thursday 17 December 2026, the preview shows a due date of Monday 21 December, because Friday and Saturday are the weekend.`,

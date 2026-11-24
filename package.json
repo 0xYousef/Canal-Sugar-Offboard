@@ -10,7 +10,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "guide:record": "VITE_SEED_DEMO=1 vite build --outDir dist-demo && node e2e/record/record.mjs",
-    "package:windows": "node scripts/make-windows-zip.mjs"
+    "package:windows": "node scripts/make-windows-zip.mjs",
+    "e2e:workflow": "node e2e/workflow/workflow.e2e.mjs",
+    "e2e:shared": "node e2e/workflow/shared.e2e.mjs",
+    "e2e:dates": "node --experimental-strip-types e2e/workflow/dates.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",

@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Button } from '@heroui/react'
 import * as E from '../lib/engine'
+import { ensureSnapshot } from '../lib/snapshot'
 import { SECTIONS, display, optionsOf } from '../lib/fields'
 import { commit, uid, useApp } from '../lib/store'
-import { can } from '../lib/rbac'
+import { afterClose, useLive } from '../lib/live'
+import { can, canSeeArchive } from '../lib/rbac'
 import { log } from '../lib/audit'
 import type { Field, Leaver } from '../lib/types'
 import { useNav } from '../ui/nav'
-import { Check, DataTable, Dialog, Empty, LongText, PageHead, Pick, ProgressCell, StatusBadge, StatusChip, TextInput, stripe } from '../ui/kit'
+import { Check, DataTable, Dialog, Empty, LongText, PageHead, Pager, Pick, ProgressCell, StatusBadge, StatusChip, TextInput, stripe, usePaged } from '../ui/kit'
 import { subDate } from './Dashboard'
 
 const LEAVER_STATUSES = ['Not Started', 'In Progress', 'Due Soon', 'Overdue', 'Blocked', 'Completed', 'Set Reason']
@@ -30,7 +32,7 @@ export function LeaverForm({ leaver, onClose }: { leaver: Leaver | null; onClose
     const l = leaver ?? { id: uid(), values: {}, tasks: {} }
     const changes: string[] = []
     s.fields.forEach((f) => { if (vals[f.key] !== undefined) { const nv = vals[f.key].trim(); if (leaver && (l.values[f.key] ?? '') !== nv) changes.push(`${f.label}: ${l.values[f.key] || 'empty'} to ${nv || 'empty'}`); l.values[f.key] = nv } })
-    if (!leaver) s.leavers.push(l)
+    if (!leaver) { ensureSnapshot(s, l); s.leavers.push(l) }
     log(leaver ? 'Leaver edited' : 'Leaver added', leaver ? (changes.length ? changes.join('; ') + '.' : 'Saved without changes.') : 'New leaver added.', l.values.name || l.id)
     commit(); onClose()
   }
@@ -60,19 +62,29 @@ export default function Leavers() {
   const [reason, setReason] = useState('')
   const [status, setStatus] = useState('')
   const [adding, setAdding] = useState(false)
+  const live = useLive()
+  const closed = afterClose(live, s.settings)
 
-  const list = s.leavers.map((l) => ({ l, sum: E.summary(s, l) })).filter((x) => {
-    if (q && Object.values(x.l.values).join(' ').toLowerCase().indexOf(q.toLowerCase()) < 0) return false
+  const [showArchived, setShowArchived] = useState(false)
+  const viewArchive = showArchived && canSeeArchive()
+  const pool = viewArchive ? E.archivedLeavers(s) : E.liveLeavers(s)
+  const list = pool.map((l) => ({ l, sum: E.summary(s, l) })).filter((x) => {
+    if (q && Object.entries(x.l.values).filter(([k]) => !k.startsWith('__')).map(([, v]) => v).join(' ').toLowerCase().indexOf(q.toLowerCase()) < 0) return false
     if (reason && x.l.values.reason !== reason) return false
     return !status || x.sum.status === status
   })
+  const pg = usePaged(list, `${q}|${reason}|${status}`)
   const cols = s.fields.filter((f) => f.showInList && f.key !== 'name' && f.key !== 'reason')
   const rf = E.fieldByKey(s, 'reason')
 
   return (
     <div>
-      <PageHead title="Leavers" sub={`${s.leavers.length} on record. ${subDate(s)}`}
-        actions={can('leavers', 'edit') && <Button onPress={() => setAdding(true)}>Add leaver</Button>} />
+      <PageHead title="Leavers" sub={viewArchive ? `${pool.length} archived. Only people the Owner allowed can see these.` : `${pool.length} on record. ${subDate(s)}`}
+        actions={<>
+          {canSeeArchive() && <Button variant={viewArchive ? 'primary' : 'secondary'} onPress={() => setShowArchived(!viewArchive)}>{viewArchive ? 'Back to leavers' : `Archived (${E.archivedLeavers(s).length})`}</Button>}
+          {can('leavers', 'edit') && <Button isDisabled={closed} onPress={() => setAdding(true)}>Add leaver</Button>}
+        </>} />
+      {closed && <p role="status" className="mb-4 rounded-2xl bg-warning/10 px-4 py-3 text-sm">The working day ended at <b>{live.endTime}</b>. Adding leavers is closed until tomorrow.</p>}
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <TextInput label="Search" type="search" value={q} onChange={setQ} placeholder="Search any field" />
         <Pick label="Reason" value={reason || '__all'} onChange={(v) => setReason(v === '__all' ? '' : v)} options={[{ v: '__all', l: 'All reasons' }, ...s.reasons.map((r) => ({ v: r.id, l: r.name }))]} />
@@ -82,7 +94,7 @@ export default function Leavers() {
         <DataTable
           label="Leavers"
           cols={[{ key: 'n', label: 'Name' }, ...cols.map((c) => ({ key: c.key, label: c.label })), { key: 'r', label: 'Reason' }, { key: 'p', label: 'Progress' }, { key: 'o', label: 'Overdue', align: 'end' }, { key: 'la', label: 'Late', align: 'end' }, { key: 'nt', label: 'Notice' }, { key: 's', label: 'Status' }]}
-          rows={list.map(({ l, sum }) => {
+          rows={pg.rows.map(({ l, sum }) => {
             const n = E.noticeCheck(s, l)
             return {
               id: l.id, className: stripe(sum.status), onAction: () => go('leavers', l.id),
@@ -99,6 +111,7 @@ export default function Leavers() {
           })}
         />
       )}
+      {!!list.length && <Pager {...pg} />}
       {adding && <LeaverForm leaver={null} onClose={() => setAdding(false)} />}
     </div>
   )

@@ -23,7 +23,7 @@ export function Dock() {
     <nav aria-label="Sections" onPointerEnter={preloadViews}
       className="glass dock fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full p-1.5 shadow-2xl">
       <ul className="flex items-center gap-0.5">
-        {PAGES.filter((p) => p.id !== 'guide' && canSee(p.id)).map((p) => {
+        {PAGES.filter((p) => p.id !== 'guide' && p.id !== 'profile' && canSee(p.id)).map((p) => {
           const active = page === p.id
           return (
             <motion.li key={p.id} layout transition={{ type: 'spring', stiffness: 520, damping: 38 }} className="relative">

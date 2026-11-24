@@ -1,13 +1,13 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Button, Skeleton, Toast } from '@heroui/react'
-import { Dashboard, Leavers, LeaverDetail, Tasks, Reports, Settings, Guide, preloadViews } from './views/lazy'
+import { Dashboard, Leavers, LeaverDetail, Tasks, Reports, Settings, Guide, Profile, preloadViews } from './views/lazy'
 import { PageTurn } from './ui/PageTurn'
 import { Dock, GuideButton } from './ui/Dock'
 import { NavProvider, useNav } from './ui/nav'
 import { Logo } from './ui/Logo'
 import { ThemeToggle } from './ui/ThemeToggle'
 import { DbLamp } from './ui/DbLamp'
-import { ProfileDialog, UserAvatar } from './ui/ProfileDialog'
+import { UserAvatar } from './ui/ProfileDialog'
 import type { User } from './lib/auth'
 import { canSee, isOwner, useRbac, type Module } from './lib/rbac'
 import { useStartGate } from './lib/start'
@@ -29,7 +29,6 @@ function Shell({ user }: { user: User }) {
   const { page, leaverId, go } = useNav()
   useRbac()
   const starting = useStartGate()
-  const [profile, setProfile] = useState(false)
   const live = useLive()
   useEffect(() => { startLive(); return () => stopLive() }, [])
   const [, tick] = useState(0)
@@ -44,7 +43,7 @@ function Shell({ user }: { user: User }) {
   return (
     <>
       <div className="glass-bg" aria-hidden="true" />
-      <header className="glass sticky top-3 z-40 mx-auto mt-3 flex items-center justify-between gap-4 rounded-full py-1.5 pl-5 pr-2" style={{ width: 'min(72rem, calc(100% - 2rem))' }}>
+      <header className="glass sticky top-3 z-40 mx-auto mt-3 flex items-center justify-between gap-4 rounded-full py-1.5 pl-5 pr-2" style={{ width: 'min(92rem, calc(100% - 2rem))' }}>
         <span className="flex items-center gap-2 font-serif text-lg font-semibold">
           <Logo size={34} />
           <span className="hidden sm:inline">Canal Sugar Offboarding</span>
@@ -52,19 +51,19 @@ function Shell({ user }: { user: User }) {
         <div className="flex items-center gap-1">
           <DbLamp />
           <ThemeToggle />
-          <Button variant="ghost" className="h-auto gap-2 rounded-full py-1 pl-1 pr-3" onPress={() => setProfile(true)} aria-label="Open my profile">
+          <Button variant="ghost" className="h-auto gap-2 rounded-full py-1 pl-1 pr-3" onPress={() => go('profile')} aria-label="Open my profile">
             <UserAvatar name={user.name} />
             <span className="text-left leading-tight"><span className="block text-sm font-semibold">{user.name}</span><span className="block text-xs text-muted">{note}</span></span>
           </Button>
         </div>
       </header>
       {left !== null && left > 0 && left <= 30 && (
-        <div role="alert" className="glass mx-auto mt-3 flex flex-wrap items-center justify-between gap-3 rounded-3xl px-5 py-3 text-sm" style={{ width: 'min(72rem, calc(100% - 2rem))' }}>
+        <div role="alert" className="glass mx-auto mt-3 flex flex-wrap items-center justify-between gap-3 rounded-3xl px-5 py-3 text-sm" style={{ width: 'min(92rem, calc(100% - 2rem))' }}>
           <span><b>The shared file will be removed from the server at {live.endTime}</b> (in {Math.max(1, Math.round(left))} min). Export your sheet from Reports before then.</span>
           {canSee('reports') && <Button size="sm" onPress={() => go('reports')}>Go to Reports</Button>}
         </div>
       )}
-      <main className="mx-auto max-w-6xl px-4 pb-32 pt-8 sm:px-8">
+      <main className="mx-auto max-w-[92rem] px-4 pb-32 pt-8 sm:px-8">
         {starting ? <Start /> : (<>
         <PageTurn pageKey={page + (leaverId ?? '')}>
           <Suspense fallback={<Fallback />}>
@@ -75,15 +74,16 @@ function Shell({ user }: { user: User }) {
             {canSee(page as Module) && page === 'reports' && <Reports />}
             {canSee(page as Module) && page === 'settings' && <Settings />}
             {canSee(page as Module) && page === 'guide' && <Guide />}
+            {page === 'profile' && <Profile />}
           </Suspense>
         </PageTurn>
         </>)}
+        <p className="mt-12 text-center text-xs text-muted">Developed by Canal Sugar Human Resources Team</p>
       </main>
       {!starting && <><Dock /><GuideButton /></>}
       <SetPassword />
       {!user.mustChange && <RulesDialog user={user} />}
       <Toast.Provider placement="top end" />
-      {profile && <ProfileDialog user={user} onClose={() => setProfile(false)} />}
     </>
   )
 }

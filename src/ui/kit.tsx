@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button, Checkbox, Chip, Input, Label, ListBox, Modal, ProgressBar, Select, TextArea, TextField, Switch } from '@heroui/react'
 
 type Tone = 'success' | 'warning' | 'danger' | 'default' | 'accent'
@@ -99,7 +99,7 @@ export const Empty = ({ children }: { children: ReactNode }) => (
   <div className="rounded-3xl border border-dashed border-separator p-10 text-center text-muted">{children}</div>
 )
 
-export interface Col { key: string; label: string; align?: 'end' | 'start'; rowHeader?: boolean }
+export interface Col { key: string; label: ReactNode; align?: 'end' | 'start'; rowHeader?: boolean }
 export interface Row { id: string; cells: ReactNode[]; onAction?: () => void; className?: string }
 
 /** Lightweight table: plain elements with HeroUI's table classes. Far cheaper than a react-aria collection. */
@@ -214,11 +214,11 @@ export function Confirm(p: { open: boolean; title: string; text: ReactNode; onCl
 
 /* ---- more controls ---- */
 /** The box and its words both sit inside Checkbox.Content, which is the part that reacts to clicks. */
-export const Check = ({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+export const Check = ({ label, checked, onChange, disabled, bare }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; bare?: boolean }) => (
   <Checkbox isSelected={checked} onChange={onChange} isDisabled={disabled}>
     <Checkbox.Content className="flex-row items-center gap-2">
       <Checkbox.Control><Checkbox.Indicator /></Checkbox.Control>
-      <Label>{label}</Label>
+      <Label className={bare ? 'sr-only' : undefined}>{label}</Label>
     </Checkbox.Content>
   </Checkbox>
 )
@@ -239,5 +239,41 @@ export function Toggle({ on, onChange, label, disabled, children }: { on: boolea
         {children}
       </Switch.Content>
     </Switch>
+  )
+}
+
+/* ---- pagination ---- */
+/** Slice a list into pages. The page goes back to 1 whenever `resetKey` changes (filters, search). */
+export function usePaged<T>(items: T[], resetKey = '', initialSize = 25) {
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(initialSize)
+  useEffect(() => { setPage(1) }, [resetKey, size])
+  const pages = Math.max(1, Math.ceil(items.length / size))
+  const cur = Math.min(page, pages)
+  return { rows: items.slice((cur - 1) * size, cur * size), page: cur, pages, size, setPage, setSize, total: items.length }
+}
+
+export function Pager(p: { page: number; pages: number; size: number; total: number; setPage: (n: number) => void; setSize: (n: number) => void }) {
+  if (p.total <= 10) return null
+  const from = (p.page - 1) * p.size + 1, to = Math.min(p.total, p.page * p.size)
+  // 1 … 4 5 [6] 7 8 … 20
+  const nums = [...new Set([1, p.pages, ...Array.from({ length: 5 }, (_, i) => p.page - 2 + i)])].filter((n) => n >= 1 && n <= p.pages).sort((a, b) => a - b)
+  return (
+    <nav aria-label="Pagination" className="mt-3 flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-muted">Showing <b className="text-foreground">{from}–{to}</b> of <b className="text-foreground">{p.total}</b></p>
+      <div className="flex flex-wrap items-center gap-1">
+        <Button size="sm" variant="tertiary" isDisabled={p.page <= 1} onPress={() => p.setPage(p.page - 1)} aria-label="Previous page">Previous</Button>
+        {nums.map((n, i) => (
+          <span key={n} className="flex items-center gap-1">
+            {i > 0 && n - nums[i - 1] > 1 && <span className="px-1 text-muted" aria-hidden="true">…</span>}
+            <Button size="sm" variant={n === p.page ? 'primary' : 'tertiary'} onPress={() => p.setPage(n)} aria-label={`Page ${n}`} aria-current={n === p.page ? 'page' : undefined}>{n}</Button>
+          </span>
+        ))}
+        <Button size="sm" variant="tertiary" isDisabled={p.page >= p.pages} onPress={() => p.setPage(p.page + 1)} aria-label="Next page">Next</Button>
+      </div>
+      <div className="w-36">
+        <Pick label="Rows per page" hideLabel value={String(p.size)} onChange={(v) => p.setSize(Number(v))} options={[10, 25, 50, 100].map((n) => ({ v: String(n), l: `${n} per page` }))} />
+      </div>
+    </nav>
   )
 }

@@ -8,6 +8,9 @@ import { atlasCall, atlasQuery, atlasReady, setAuthToken } from './atlas'
 
 export interface User {
   id: string; name: string; email: string; role: string; active: boolean; owner?: boolean; mustChange?: boolean
+  firstName?: string; lastName?: string; job?: string; seniority?: string; lastSeen?: string
+  /** The Owner has allowed this person to see archived leavers. */
+  archive?: boolean
   salt?: string; hash?: string; createdAt: string; lastLogin?: string
 }
 
@@ -49,7 +52,7 @@ export async function refreshUsers() {
 }
 async function refreshMe() {
   const r = await api<{ user: User }>('/auth/me')
-  me = r.user; setRole(me.role, !!me.owner); notify()
+  me = r.user; setRole(me.role, !!me.owner, !!me.archive); notify()
 }
 
 /* ---- store ---- */
@@ -93,7 +96,7 @@ export async function initAuth() {
   const sid = readSession()
   const u = users.find((x) => x.id === sid && x.active)
   sessionId = u ? u.id : null
-  if (u) setRole(u.role, !!u.owner)
+  if (u) setRole(u.role, !!u.owner, !!u.archive)
   notify()
 }
 
@@ -153,7 +156,7 @@ export async function login(email: string, password: string, remember: boolean):
       const r = await api<{ token: string; user: User }>('/auth/login', 'POST', { login: email, password })
       setAuthToken(r.token); me = r.user
       try { (remember ? localStorage : sessionStorage).setItem(TOKEN, r.token) } catch { /* ignore */ }
-      setRole(me.role, !!me.owner)
+      setRole(me.role, !!me.owner, !!me.archive)
       await loadConfig().catch(() => undefined)
       notify(); log('Signed in', `${me.name} signed in.`); return null
     } catch (e) { return msgOf(e) }
@@ -169,7 +172,7 @@ export async function login(email: string, password: string, remember: boolean):
   u.lastLogin = new Date().toISOString(); persist()
   sessionId = u.id
   try { (remember ? localStorage : sessionStorage).setItem(SESSION, u.id) } catch { /* ignore */ }
-  setRole(u.role, !!u.owner); notify()
+  setRole(u.role, !!u.owner, !!u.archive); notify()
   log('Signed in', `${u.name} signed in.`)
   return null
 }
@@ -189,12 +192,12 @@ export function logout() {
 /* ---- profile management ---- */
 const adminCount = () => users.filter((u) => u.role === 'Admin' && u.active).length
 
-export async function saveUser(d: { id?: string; name: string; email: string; role: string; active: boolean; password?: string }): Promise<string | null> {
+export async function saveUser(d: { id?: string; name: string; email: string; role: string; active: boolean; password?: string; archive?: boolean }): Promise<string | null> {
   if (!isOwner()) return 'Only the Owner can manage profiles.'
   if (remote()) {
     try {
-      if (d.id) await api(`/users/${d.id}`, 'PUT', { name: d.name, email: d.email, role: d.role, active: d.active, password: d.password })
-      else await api('/users', 'POST', { name: d.name, email: d.email, role: d.role, active: d.active, password: d.password })
+      if (d.id) await api(`/users/${d.id}`, 'PUT', { name: d.name, email: d.email, role: d.role, active: d.active, password: d.password, archive: d.archive })
+      else await api('/users', 'POST', { name: d.name, email: d.email, role: d.role, active: d.active, password: d.password, archive: d.archive })
     } catch (e) { return msgOf(e) }
     log(d.id ? 'Profile changed' : 'Profile added', `${d.name.trim()} (${d.email.trim().toLowerCase()}), role ${d.role}${d.active ? '' : ', disabled'}${d.password ? ', password set' : ''}.`)
     await refreshUsers(); return null
@@ -209,12 +212,12 @@ export async function saveUser(d: { id?: string; name: string; email: string; ro
   if (existing?.owner && (!d.active || d.role !== 'Admin')) return 'The Owner keeps an active profile and the Admin role. Transfer ownership first.'
   if (existing && existing.role === 'Admin' && (d.role !== 'Admin' || !d.active) && adminCount() <= 1) return 'Keep at least one active Admin.'
   if (existing) {
-    Object.assign(existing, { name, email, role: d.role, active: d.active })
+    Object.assign(existing, { name, email, role: d.role, active: d.active, archive: !!d.archive })
     if (d.password) { existing.salt = newSalt(); existing.hash = await hashPw(d.password, existing.salt); existing.mustChange = true }
-    if (existing.id === sessionId) setRole(existing.role, !!existing.owner)
+    if (existing.id === sessionId) setRole(existing.role, !!existing.owner, !!existing.archive)
   } else {
     const salt = newSalt()
-    users.push({ id: newId(), name, email, role: d.role, active: d.active, salt, hash: await hashPw(d.password!, salt), mustChange: true, createdAt: new Date().toISOString() })
+    users.push({ id: newId(), name, email, role: d.role, active: d.active, archive: !!d.archive, salt, hash: await hashPw(d.password!, salt), mustChange: true, createdAt: new Date().toISOString() })
   }
   log(existing ? 'Profile changed' : 'Profile added', `${name} (${email}), role ${d.role}${d.active ? '' : ', disabled'}${d.password ? ', password set' : ''}.`)
   persist(); notify()
@@ -263,6 +266,30 @@ export async function changeOwnPassword(current: string, next: string): Promise<
   u.salt = newSalt(); u.hash = await hashPw(next, u.salt); log('Password changed', `${u.name} changed their own password.`); persist(); notify()
   return null
 }
+/** Seen in the last 2 minutes. You are always online to yourself. */
+export const isOnline = (u: User) => u.id === currentUser()?.id || (!!u.lastSeen && Date.now() - new Date(u.lastSeen).getTime() < 120_000)
+
+export interface ProfileInput { firstName: string; lastName: string; job: string; seniority: string }
+/** First and last name as saved, or the stored full name split in two for people created before the fields existed. */
+export const namesOf = (u: { name: string; firstName?: string; lastName?: string }) => {
+  if (u.firstName !== undefined || u.lastName !== undefined) return { first: u.firstName ?? '', last: u.lastName ?? '' }
+  const [first = '', ...rest] = u.name.trim().split(/\s+/)
+  return { first, last: rest.join(' ') }
+}
+export async function saveProfile(p: ProfileInput): Promise<string | null> {
+  const firstName = p.firstName.trim(), lastName = p.lastName.trim(), job = p.job.trim(), seniority = p.seniority.trim()
+  if (!firstName) return 'Enter your first name.'
+  const name = `${firstName} ${lastName}`.trim()
+  if (remote()) {
+    try { await api('/auth/profile', 'POST', { name, firstName, lastName, job, seniority }); await refreshMe() } catch (e) { return msgOf(e) }
+  } else {
+    const u = currentUser()
+    if (!u) return 'Not signed in.'
+    Object.assign(u, { name, firstName, lastName, job, seniority }); persist(); notify()
+  }
+  log('Profile changed', `${name} updated their own profile.`)
+  return null
+}
 export function renameSelf(name: string) {
   if (remote()) { if (me && name.trim()) { me.name = name.trim(); notify(); void api('/auth/profile', 'POST', { name: name.trim() }).catch(() => undefined) } return }
   const u = currentUser()
@@ -277,7 +304,7 @@ export function renameRole(from: string, to: string) {
   if (!hit) return
   persist()
   const me = currentUser()
-  if (me && me.role === to) setRole(to, !!me.owner)
+  if (me && me.role === to) setRole(to, !!me.owner, !!me.archive)
   notify()
 }
 export const peopleWithRole = (role: string) => users.filter((u) => u.role === role).length
@@ -296,6 +323,6 @@ export async function transferOwnership(toId: string): Promise<string | null> {
   log('Ownership transferred', `${self.name} made ${to.name} the Owner.`)
   if (to.role !== 'Admin') to.role = 'Admin'
   self.owner = false; to.owner = true
-  setRole(self.role, false); persist(); notify()
+  setRole(self.role, false, !!self.archive); persist(); notify()
   return null
 }

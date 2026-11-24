@@ -2,6 +2,9 @@
 // To move to a backend, replace load() / save(). Components re-render through useApp().
 import { useSyncExternalStore } from 'react'
 import { DEPARTMENTS, defaultState } from './defaults'
+import { DEFAULT_FLOW, normalizeFlow } from './flowDefaults'
+import { autoArchive } from './engine'
+import { ensureSnapshot } from './snapshot'
 import type { State } from './types'
 
 const KEY = 'offboarding.codebase.v2'
@@ -12,6 +15,13 @@ function valid(s: unknown): s is State {
 }
 /** Older saves had Department as free text. Make it a dropdown, keeping every name already typed. */
 function migrate(s: State): State {
+  // Action records were first saved under "STEP#ACTION", which the shared database refuses; they live under "STEP__ACTION" now.
+  s.leavers.forEach((l) => Object.keys(l.tasks).forEach((k) => { if (k.includes('#')) { const n = k.replace('#', '__'); if (!(n in l.tasks)) l.tasks[n] = l.tasks[k]; delete l.tasks[k] } }))
+  // The task actions are saved data, not code: older saves get the original four written in once, then they are just entries like any other.
+  // Only the admin's own actions remain: the old built-in Waive / Block / Reopen entries are dropped, and every action finishes the task.
+  s.settings.flow = normalizeFlow(s.settings.flow ?? JSON.parse(JSON.stringify(DEFAULT_FLOW)))
+  // Leavers created before rules were frozen per leaver get the rules as configured now, once.
+  s.leavers.forEach((l) => ensureSnapshot(s, l))
   const f = s.fields.find((x) => x.key === 'dept')
   if (f && f.type === 'text') {
     const seen = s.leavers.map((l) => (l.values.dept ?? '').trim()).filter(Boolean)
@@ -29,7 +39,7 @@ function load(): State {
 }
 
 export const state: State = load()          // mutated in place, so imports stay valid
-export const session = { role: 'Viewer', owner: false }    // UI-level role, not real security
+export const session = { role: 'Viewer', owner: false, archive: false }    // UI-level role, not real security
 
 let version = 0
 const listeners = new Set<() => void>()
@@ -39,13 +49,36 @@ const notify = () => { version++; listeners.forEach((f) => f()) }
 export const afterCommit = new Set<() => void>()
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* ignore */ } }
 export function commit() {
+  autoArchive(state)
+  // While a configuration page is in edit mode, changes only show on screen. Save changes is what stores and shares them.
+  if (draft !== null) { notify(); return }
   save(); notify()
   afterCommit.forEach((f) => f())
 }
+
+/* ---- edit mode for the configuration pages ---- */
+const CONFIG_KEYS = ['settings', 'reasons', 'groups', 'members', 'fields', 'steps'] as const
+let draft: string | null = null                 // the configuration as it was when editing started
+let editId: string | null = null                // which box is being edited (one at a time)
+const configJson = () => JSON.stringify(Object.fromEntries(CONFIG_KEYS.map((k) => [k, (state as unknown as Record<string, unknown>)[k]])))
+/** Is a box being edited? With an id: is that very box being edited. */
+export const isEditing = (id?: string) => draft !== null && (id === undefined || id === editId)
+export const editingId = () => editId
+export const hasUnsaved = () => draft !== null && configJson() !== draft
+export function startEdit(id: string) { if (draft === null) { draft = configJson(); editId = id; notify() } }
+export function saveEdit() { if (draft === null) return; draft = null; editId = null; commit() }
+/** Put the configuration back exactly as it was when editing started. */
+export function cancelEdit() {
+  if (draft === null) return
+  const snap = JSON.parse(draft) as Record<string, unknown>
+  const st = state as unknown as Record<string, unknown>
+  CONFIG_KEYS.forEach((k) => { if (k in snap) st[k] = snap[k]; else delete st[k] })
+  draft = null; editId = null; notify()
+}
 /** Apply what came from the server: update the screen and the local copy, without sending it back. */
 export function applyRemote(change: () => void) { change(); save(); notify() }
-export function setRole(r: string, owner = false) {
-  session.role = r; session.owner = owner
+export function setRole(r: string, owner = false, archive = false) {
+  session.role = r; session.owner = owner; session.archive = archive
   notify()
 }
 export function replaceState(next: unknown) {

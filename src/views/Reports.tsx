@@ -48,12 +48,12 @@ export default function Reports() {
   }
   const expLeavers = () => {
     const out: (string | number)[][] = [[...s.fields.map((f) => f.label), 'Done', 'Applicable', '% done', 'Overdue', 'Late', 'Notice', 'Status']]
-    s.leavers.forEach((l) => { const m = E.summary(s, l); out.push([...s.fields.map((f) => display(s, f, l.values[f.key]).replace(/^—$/, '')), m.done, m.base, m.pct, m.overdue, m.late, E.noticeCheck(s, l).text, m.status]) })
+    E.liveLeavers(s).forEach((l) => { const m = E.summary(s, l); out.push([...s.fields.map((f) => display(s, f, l.values[f.key]).replace(/^—$/, '')), m.done, m.base, m.pct, m.overdue, m.late, E.noticeCheck(s, l).text, m.status]) })
     downloadFile('offboarding-leavers.csv', csv(out))
   }
 
   const by: Record<string, typeof s.leavers> = {}
-  if (gf) s.leavers.forEach((l) => { const k = display(s, gf, l.values[gf.key]); (by[k] ??= []).push(l) })
+  if (gf) E.liveLeavers(s).forEach((l) => { const k = display(s, gf, l.values[gf.key]); (by[k] ??= []).push(l) })
 
   return (
     <div>
@@ -91,18 +91,18 @@ export default function Reports() {
       <SectionTitle title="Step performance" aside="Sorted by problems (late + breached)" />
       <DataTable label="Step performance"
         cols={[{ key: 's', label: 'Step' }, { key: 'o', label: 'Team' }, { key: 'r', label: 'Rule' }, ...['Done', 'On time', 'Late', 'Breached', 'Avg days late'].map((l) => ({ key: l, label: l, align: 'end' as const }))]}
-        rows={s.steps.filter((x) => x.active).map((st) => {
+        rows={[...new Map(rows.map((r) => [r.step.id, r.step])).values()].map((st) => {
           const sr = rows.filter((r) => r.step.id === st.id)
           return { st, n: sr.length, done: sr.filter((r) => r.status === 'Done').length, c: E.complianceOf(sr), avg: avgLate(sr) }
         }).filter((x) => x.n > 0).sort((a, b) => b.c.late + b.c.br - (a.c.late + a.c.br)).map((x) => ({
           id: x.st.id,
-          cells: [<span key="s"><span className="text-muted">{x.st.id}</span> {x.st.name}</span>, x.st.group, E.slaText(s, x.st), `${x.done}/${x.n}`, x.c.on, x.c.late, x.c.br, x.avg],
+          cells: [<span key="s"><span className="text-muted">{x.st.id}</span> {x.st.name}{s.steps.find((y) => y.id === x.st.id)?.active === false ? <span className="ml-2 rounded-full bg-foreground/10 px-2 py-0.5 text-xs text-muted">switched off</span> : null}</span>, x.st.group, E.slaText(s, x.st), `${x.done}/${x.n}`, x.c.on, x.c.late, x.c.br, x.avg],
         }))} />
 
       <SectionTitle title="Employee report" />
       <DataTable label="Employee report"
         cols={[{ key: 'e', label: 'Employee' }, { key: 'r', label: 'Reason' }, { key: 'd', label: 'Done', align: 'end' }, { key: 'on', label: 'On time', align: 'end' }, { key: 'l', label: 'Late', align: 'end' }, { key: 'b', label: 'Breached', align: 'end' }, { key: 'n', label: 'Notice' }, { key: 's', label: 'Status' }]}
-        rows={s.leavers.map((l) => {
+        rows={E.liveLeavers(s).map((l) => {
           const m = E.summary(s, l), c = E.complianceOf(m.rows), n = E.noticeCheck(s, l)
           return {
             id: l.id, className: stripe(m.status), onAction: () => go('leavers', l.id),

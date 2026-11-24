@@ -82,6 +82,7 @@ export default function Login() {
             </p>
           )}
           <p className="mt-6 text-center text-sm text-muted">No account yet? Ask the Owner to add you, then sign in with the email and password they send you.</p>
+          <p className="mt-4 text-center text-xs text-muted">Developed by Canal Sugar Human Resources Team</p>
         </main>
       </div>
     </div>
