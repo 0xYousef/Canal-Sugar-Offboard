@@ -50,7 +50,7 @@ export async function handler(req, res) {
   if (req.url.split('?')[0] === '/report/data') { // live report tables for Excel: protected by REPORT_KEY, not the website's access key
     try {
       const u = new URL(req.url, 'http://x'), c = await getClient()
-      const [code, type, text] = await makeReport(c.db(name(u.searchParams.get('database'), 'offboarding')), name(u.searchParams.get('collection'), 'app_state')).handle(req, u)
+      const [code, type, text] = await makeReport(c.db(name(u.searchParams.get('database'), 'offboarding')), name(u.searchParams.get('collection'), 'app_state'))(req, u)
       res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(text)
     } catch (e) { return send(res, 500, { error: 'Report failed: ' + e.message }, origin) }
   }
