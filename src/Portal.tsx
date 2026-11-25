@@ -83,7 +83,7 @@ function Shell({ user }: { user: User }) {
       {!starting && <><Dock /><GuideButton /></>}
       <SetPassword />
       {!user.mustChange && <RulesDialog user={user} />}
-      <Toast.Provider placement="top end" />
+      <Toast.Provider placement="top" />
     </>
   )
 }

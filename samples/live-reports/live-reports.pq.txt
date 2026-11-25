@@ -1,0 +1,27 @@
+// Summary: Data > Get Data > From Other Sources > Blank Query > Advanced Editor, paste, then Close & Load.
+let
+    Source = Csv.Document(Web.Contents("https://YOUR-APP.vercel.app/api/report/data", [Query = [table = "summary", format = "csv", key = "YOUR_REPORT_KEY"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+    Table = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+in
+    Table
+
+// All cases: Data > Get Data > From Other Sources > Blank Query > Advanced Editor, paste, then Close & Load.
+let
+    Source = Csv.Document(Web.Contents("https://YOUR-APP.vercel.app/api/report/data", [Query = [table = "cases", format = "csv", key = "YOUR_REPORT_KEY"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+    Table = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+in
+    Table
+
+// All tasks: Data > Get Data > From Other Sources > Blank Query > Advanced Editor, paste, then Close & Load.
+let
+    Source = Csv.Document(Web.Contents("https://YOUR-APP.vercel.app/api/report/data", [Query = [table = "tasks", format = "csv", key = "YOUR_REPORT_KEY"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+    Table = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+in
+    Table
+
+// Team performance: Data > Get Data > From Other Sources > Blank Query > Advanced Editor, paste, then Close & Load.
+let
+    Source = Csv.Document(Web.Contents("https://YOUR-APP.vercel.app/api/report/data", [Query = [table = "teams", format = "csv", key = "YOUR_REPORT_KEY"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+    Table = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+in
+    Table

@@ -221,3 +221,40 @@ export function autoArchive(s: State): boolean {
   }
   return changed
 }
+
+/** Employee ID is the unique identifier. Compared without case or spaces. */
+export const idKey = (v: string | undefined) => (v ?? '').trim().toLowerCase()
+export const findByEmpId = (s: State, id: string, except?: Leaver) => s.leavers.find((l) => l !== except && idKey(l.values.empId) === idKey(id))
+
+/** Labels of the required fields that are empty: fields marked required, plus those required for the chosen reason. */
+export function missingRequired(s: State, values: Record<string, string>): string[] {
+  const reason = (values.reason ?? '').trim()
+  return s.fields.filter((f) => (f.required || (reason && f.requiredFor?.includes(reason))) && !(values[f.key] ?? '').trim()).map((f) => f.label)
+}
+
+/** How to call a leaver on screen: the name when there is one, otherwise the Employee ID. */
+export const who = (l: Leaver) => l.values.name?.trim() || l.values.empId || '(no name)'
+
+/** Everything a field drives in the system, in plain words. Shown in Settings, Leaver form. */
+export function impactOf(s: State, f: Field): string[] {
+  const out: string[] = []
+  const stepIds = (fn: (x: Step) => boolean) => s.steps.filter(fn).map((x) => x.id)
+  if (f.key === 'empId') out.push('Unique identifier: import matching, duplicate check, search')
+  if (f.key === 'name') out.push('Shown as the leaver’s name (the Employee ID is used when empty)')
+  if (f.key === 'reason' || f.type === 'reason') out.push('Chooses the notice rule and which reason-specific fields are required')
+  if (f.required) out.push('Required: blocks saving and skips import rows when empty')
+  if (f.requiredFor?.length) out.push(`Required for reason ${f.requiredFor.join(', ')}`)
+  const start = stepIds((x) => x.start.type === 'field' && x.start.field === f.key)
+  if (start.length) out.push(`Starts the SLA clock of ${start.length} task${start.length === 1 ? '' : 's'} (${start.slice(0, 6).join(', ')}${start.length > 6 ? '…' : ''})`)
+  const cond = stepIds((x) => !!x.condition && x.condition.field === f.key)
+  if (cond.length) out.push(`Decides if ${cond.length} task${cond.length === 1 ? '' : 's'} apply (${cond.slice(0, 6).join(', ')}${cond.length > 6 ? '…' : ''})`)
+  const n = s.settings.notice
+  const nr = [n.hireField === f.key && 'hire date', n.requestField === f.key && 'request date', n.endField === f.key && 'end date'].filter(Boolean)
+  if (nr.length) out.push(`Notice check uses it as the ${nr.join(' and ')}`)
+  s.fields.filter((x) => x.fallback === f.key).forEach((x) => out.push(`Backs up ${x.label} when that is empty`))
+  if (f.fallback) out.push(`Falls back to ${s.fields.find((x) => x.key === f.fallback)?.label ?? f.fallback} when empty`)
+  if (f.showInList) out.push('Column in the Leavers list')
+  if (['select', 'reason', 'checkbox', 'text'].includes(f.type) && f.key !== 'name' && f.key !== 'empId') out.push('Can group the Reports charts')
+  out.push('Included in exports and the import template')
+  return out
+}

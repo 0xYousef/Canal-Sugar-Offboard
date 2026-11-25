@@ -94,6 +94,10 @@ export interface Settings {
   flow?: WorkflowAction[]
   /** Block adding leavers and imports after the closing time. When missing it follows the daily removal switch; set it to turn it on or off by itself. */
   lockAfterClose?: boolean
+  /** Department and Location were made required once; after that the admin decides. */
+  deptSiteRequired?: boolean
+  /** The Email field was added once to older saves. */
+  emailField?: boolean
 }
 
 export interface State {

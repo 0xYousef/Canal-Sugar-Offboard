@@ -33,7 +33,7 @@ export default function Tasks() {
     if (status === 'open') { if (['Done', 'Waived'].includes(r.status)) return false }
     else if (status !== 'all' && r.status !== status) return false
     const t = q.toLowerCase()
-    return !t || (r.leaver.values.name + ' ' + r.step.name + ' ' + r.step.id).toLowerCase().includes(t)
+    return !t || ((r.leaver.values.name ?? '') + ' ' + (r.leaver.values.empId ?? '') + ' ' + r.step.name + ' ' + r.step.id).toLowerCase().includes(t)
   }).sort((a, b) => ORDER[a.status] - ORDER[b.status] || ((a.due || '9') < (b.due || '9') ? -1 : 1))
   const pg = usePaged(rows, `${owner}|${status}|${q}`)
   const shown = pg.rows
@@ -59,7 +59,7 @@ export default function Tasks() {
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <Pick label="Team" value={owner || '__all'} onChange={(v) => setOwner(v === '__all' ? '' : v)} options={[{ v: '__all', l: 'All teams' }, ...s.groups.map((g) => ({ v: g, l: g }))]} />
         <Pick label="Status" value={status} onChange={setStatus} options={STATUSES.map(([v, l]) => ({ v, l }))} />
-        <TextInput label="Search" type="search" value={q} onChange={setQ} placeholder="Leaver or task" />
+        <TextInput label="Search" type="search" value={q} onChange={setQ} placeholder="Name, Employee ID or task" />
       </div>
       {picked.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-accent/10 p-3" role="region" aria-label="Bulk actions">
@@ -83,8 +83,8 @@ export default function Tasks() {
               id: r.leaver.id + r.step.id,
               className: stripe(r.status),
               cells: [
-                canAct('tasks', r.step.group) ? <Check key="c" bare label={`Select ${r.step.id} for ${r.leaver.values.name}`} checked={sel.has(key(r))} onChange={(v) => toggle(key(r), v)} /> : <span key="c" className="text-muted">&mdash;</span>,
-                <NameBtn key="l" onPress={() => go('leavers', r.leaver.id)}>{r.leaver.values.name}</NameBtn>,
+                canAct('tasks', r.step.group) ? <Check key="c" bare label={`Select ${r.step.id} for ${E.who(r.leaver)}`} checked={sel.has(key(r))} onChange={(v) => toggle(key(r), v)} /> : <span key="c" className="text-muted">&mdash;</span>,
+                <NameBtn key="l" onPress={() => go('leavers', r.leaver.id)}>{E.who(r.leaver)}</NameBtn>,
                 <span key="s"><span className="text-muted">{r.step.id}</span> {r.step.name}</span>,
                 r.step.group,
                 <span key="d" className="whitespace-nowrap">{r.due ? fmt(r.due) : '—'}{r.delay && r.status !== 'Done' ? <span className="text-muted" title="Working days late"> ({r.delay} wd)</span> : null}</span>,

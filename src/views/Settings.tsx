@@ -1,17 +1,18 @@
 import { Fragment, Suspense, lazy, useEffect, useState, type ReactNode } from 'react'
-import { Button, Card, Dropdown, Input, Tabs, TextField } from '@heroui/react'
+import { Button, Card, Dropdown, Input, TextField } from '@heroui/react'
 import * as E from '../lib/engine'
 import { fmt } from '../lib/dates'
 import { FIELD_TYPES, SECTIONS, slugKey } from '../lib/fields'
 import { cancelEdit, commit, hasUnsaved, isEditing, saveEdit, startEdit, useApp } from '../lib/store'
 import { log } from '../lib/audit'
-import { can, hasExtra, isOwner, teamChanged, useRbac } from '../lib/rbac'
+import { logout } from '../lib/auth'
+import { can, isOwner, teamChanged, useRbac } from '../lib/rbac'
 
 const isAdmin = () => can('settings', 'edit')
 /** A box can be changed only by someone allowed to, and only after pressing its own Edit. */
 const canEdit = (id: string) => isAdmin() && isEditing(id)
 
-const BOX_NAME: Record<string, string> = { calendar: 'calendar and alerts', notice: 'notice-period check', holidays: 'holidays', fields: 'leaver form', sla: 'deadlines', actions: 'actions', slawf: 'SLA workflow', reasons: 'termination reasons', teams: 'teams' }
+const BOX_NAME: Record<string, string> = { calendar: 'calendar and alerts', notice: 'notice-period check', holidays: 'holidays', fields: 'leaver form', sla: 'task time limits', actions: 'actions', slawf: 'SLA workflow', reasons: 'termination reasons', teams: 'teams' }
 
 /** Edit / Cancel / Save changes for one box. Only one box is edited at a time, so the others wait. */
 function EditButtons({ id }: { id: string }) {
@@ -43,48 +44,59 @@ import type { Dependency, Field, FieldType, Member, Need, Step, StepAction, Work
 import { flowOf, isStepAction, rulesUsing, stepActionsOf } from '../lib/workflow'
 import { membersOf, waitsFor } from '../lib/tasks'
 import { refreshSnapshot } from '../lib/snapshot'
-import { atlasReady } from '../lib/atlas'
 import { useNav } from '../ui/nav'
-import { minutesToClose, removeSharedFile, saveLiveSettings, useLive } from '../lib/live'
 import { toast } from '@heroui/react'
-import { session } from '../lib/store'
 import { Check, Confirm, Toggle, DataTable, Dialog, LongText, PageHead, Pager, Pick, TextInput, usePaged } from '../ui/kit'
+
+const ICON: Record<string, string> = {
+  calendar: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 16H5V10h14v10Z',
+  fields: 'M3 5h18v2H3V5Zm0 6h18v2H3v-2Zm0 6h12v2H3v-2Z',
+  reasons: 'M21.4 11.6 12.4 2.6A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .5.2 1 .6 1.4l9 9a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8ZM6.5 8a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z',
+  sla: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 11H7v-2h4V6h2v7Z',
+  holidays: 'M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.2-.6L12 2l2.8 6.6 7.2.6-5.4 4.8 1.6 7Z',
+  notice: 'M6 2h12v6l-4 4 4 4v6H6v-6l4-4-4-4V2Zm2 2v3l3 3h2l3-3V4H8Z',
+  teams: 'M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Z',
+  actions: 'M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM9 14h6v6H9v-6Z',
+  slawf: 'M3 5h6v4H3V5Zm12 0h6v4h-6V5ZM9 7h6v2H9V7Zm0 8h6v4H9v-4ZM5 9h2v4h4v2H5V9Z',
+  access: 'M12 1 3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5l-9-4Zm-1 14-4-4 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6Z',
+  users: 'M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Zm-8 .1C5.7 13.3 1 14.4 1 17v3h5v-3a5 5 0 0 1 2-3.9Z',
+  connect: 'M9 16h6v-6h4l-7-7-7 7h4v6Zm-4 2h14v2H5v-2Z',
+  activity: 'M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2 5l-1.4 1.4A9 9 0 1 0 13 3Zm-1 5v5l4.3 2.5.7-1.2-3.5-2V8H12Z',
+  data: 'M12 3C7 3 3 4.3 3 6v12c0 1.7 4 3 9 3s9-1.3 9-3V6c0-1.7-4-3-9-3Zm0 2c4.1 0 6.6.9 7 1-.4.1-2.9 1-7 1S5.4 6.1 5 6c.4-.1 2.9-1 7-1Z',
+}
+const GROUPS: { title: string; ids: string[] }[] = [
+  { title: 'Calendar and Deadlines', ids: ['calendar', 'holidays', 'notice', 'sla'] },
+  { title: 'Leaver Data', ids: ['fields', 'reasons', 'teams'] },
+  { title: 'Task Workflow', ids: ['actions', 'slawf'] },
+  { title: 'Data', ids: ['connect', 'activity', 'data'] },
+  { title: 'People and Access', ids: ['users', 'access'] },
+]
+const TopicIcon = ({ id, className = '' }: { id: string; className?: string }) => (
+  <span className={`grid size-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent ${className}`}><svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden="true"><path d={ICON[id]} /></svg></span>
+)
 
 const Users = lazy(() => import('./settings/Users'))
 const Sources = lazy(() => import('./settings/Sources'))
 const Access = lazy(() => import('./settings/Access'))
 const DatabaseCopy = lazy(() => import('./settings/DatabaseCopy'))
 const Activity = lazy(() => import('./settings/Activity'))
-type Topic = 'general' | 'fields' | 'lists' | 'sla' | 'workflow' | 'people' | 'connect' | 'activity' | 'data'
+type Topic = 'calendar' | 'holidays' | 'notice' | 'sla' | 'fields' | 'reasons' | 'teams' | 'actions' | 'slawf' | 'connect' | 'activity' | 'data' | 'users' | 'access'
 const TOPICS: { id: Topic; title: string; text: string; owner?: boolean; advanced?: boolean }[] = [
-  { id: 'general', title: 'Calendar and alerts', text: 'Weekend days, public holidays, and when a task counts as due soon.' },
-  { id: 'fields', title: 'Leaver form', text: 'The questions asked when you add a leaver, such as department or dates.' },
-  { id: 'lists', title: 'Reasons and teams', text: 'Why people leave, and the teams that own tasks.' },
-  { id: 'sla', title: 'Task time limits', text: 'How many days each task is allowed to take.', advanced: true },
-  { id: 'workflow', title: 'Workflow', text: 'Two parts: the actions anyone can take on a task, and the actions each SLA rule has of its own.', advanced: true },
-  { id: 'people', title: 'People and access', text: 'Who can sign in, and what each role may see, edit or take action on.', owner: true },
-  { id: 'connect', title: 'Import leavers', text: 'Read a leaver list from a CSV, Excel or JSON file on this computer.' },
-  { id: 'activity', title: 'Activity log', text: 'Who did what and to which employee. Filter it, export to Excel, or clear it.' },
+  { id: 'calendar', title: 'Calendar and Alerts', text: 'Weekend days, when a task counts as due soon, and the report date.' },
+  { id: 'holidays', title: 'Holidays', text: 'Public holidays that working-day deadlines skip.' },
+  { id: 'notice', title: 'Notice-Period Check', text: 'Which dates it reads, and how many months of notice are needed.' },
+  { id: 'sla', title: 'Task Time Limits', text: 'How many days each task is allowed to take.', advanced: true },
+  { id: 'fields', title: 'Leaver Form', text: 'The questions asked when you add a leaver, such as department or dates.' },
+  { id: 'reasons', title: 'Termination Reasons', text: 'Why people leave, and which reasons need a notice period.' },
+  { id: 'teams', title: 'Teams and Members', text: 'The teams that own tasks, and who is in each one.' },
+  { id: 'actions', title: 'Task Actions', text: 'What anyone can do to a task, such as done, waive or block, and what each one asks for.', advanced: true },
+  { id: 'slawf', title: 'SLA Workflow', text: 'The actions each SLA rule has of its own.', advanced: true },
+  { id: 'connect', title: 'Import Leavers', text: 'Read a leaver list from a CSV, Excel or JSON file on this computer.' },
+  { id: 'activity', title: 'Activity Log', text: 'Who did what and to which employee. Filter it, export to Excel, or clear it.' },
   { id: 'data', title: 'Database', text: 'Connection status, and a shared copy of everything in MongoDB.', owner: true },
+  { id: 'users', title: 'People', text: 'Who can sign in, their role and their access.', owner: true },
+  { id: 'access', title: 'Roles and Permissions', text: 'What each role may see, edit or take action on.', owner: true },
 ]
-
-/** Two small screens in one topic, switched by a pair of tabs. */
-function Pair({ items }: { items: [string, string, ReactNode][] }) {
-  const { topic, tab, setSub } = useNav()
-  const cur = items.find((x) => x[0] === tab) ?? items[0]
-  const [pending, setPending] = useState<string | null>(null)
-  const choose = (id: string) => { if (id === cur[0]) return; if (hasUnsaved()) setPending(id); else { cancelEdit(); setSub(topic ?? null, id, true) } }
-  return (
-    <>
-      <Tabs selectedKey={cur[0]} onSelectionChange={(x) => choose(String(x))} className="mb-6">
-        <Tabs.ListContainer><Tabs.List aria-label="Choose">{items.map(([id, label]) => <Tabs.Tab key={id} id={id}>{label}<Tabs.Indicator /></Tabs.Tab>)}</Tabs.List></Tabs.ListContainer>
-      </Tabs>
-      <Suspense fallback={null}>{cur[2]}</Suspense>
-      <Confirm open={!!pending} title="Drop your changes?" text="The box you were editing has changes that are not saved. Switching now discards them." onClose={() => setPending(null)}
-        onOk={() => { cancelEdit(); setSub(topic ?? null, pending, true); setPending(null) }} />
-    </>
-  )
-}
 
 const move = <T,>(arr: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; commit() }
 const sectionCard = (title: string, children: ReactNode, note?: string, editId?: string) => (
@@ -160,7 +172,7 @@ export default function Settings() {
   const { topic: topicId, setSub } = useNav()
   const topic = (TOPICS.some((t) => t.id === topicId) ? topicId : null) as Topic | null
   const setTopic = (t: Topic | null) => setSub(t)
-  const [discard, setDiscard] = useState(false)
+  const [discard, setDiscard] = useState(false), [query, setQuery] = useState('')
   // Leaving Settings with unsaved edits drops them, so edit mode never lingers on another page.
   useEffect(() => () => cancelEdit(), [])
   useEffect(() => () => cancelEdit(), [topic])
@@ -171,21 +183,34 @@ export default function Settings() {
   const back = () => { if (hasUnsaved()) setDiscard(true); else { cancelEdit(); setTopic(null) } }
 
   if (!cur) {
+    const q = query.trim().toLowerCase()
+    const match = (t: (typeof TOPICS)[number]) => !q || (t.title + ' ' + t.text).toLowerCase().includes(q)
+    const shown = GROUPS.map((g) => ({ ...g, items: g.ids.map((id) => list.find((t) => t.id === id)).filter((t): t is (typeof TOPICS)[number] => !!t && match(t)) })).filter((g) => g.items.length)
     return (
       <div>
-        <PageHead title="Settings" sub={sub} />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map((t) => (
-            <button key={t.id} onClick={() => setTopic(t.id)} className="panel group flex flex-col items-stretch justify-start rounded-3xl p-5 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-accent">
-              <span className="flex items-center justify-between gap-2">
-                <span className="text-lg font-semibold">{t.title}</span>
-                <svg viewBox="0 0 24 24" className="size-5 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" fill="currentColor" aria-hidden="true"><path d="m10 6-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6-6-6Z" /></svg>
-              </span>
-              <span className="mt-1 block text-sm text-muted">{t.text}</span>
-              {(t.advanced || t.owner) && <span className="mt-3 inline-block rounded-full bg-default px-2.5 py-0.5 text-xs text-muted">{t.owner ? 'Owner only' : 'For experts'}</span>}
-            </button>
-          ))}
-        </div>
+        <PageHead title="Settings" sub={sub} actions={<Button variant="danger-soft" onPress={logout}>Sign out</Button>} />
+        <div className="mb-6 max-w-md"><TextInput label="Find a setting" type="search" value={query} onChange={setQuery} placeholder="For example holidays, roles, import" /></div>
+        {!shown.length && <p className="panel rounded-3xl p-6 text-center text-muted">Nothing matches “{query}”.</p>}
+        {shown.map((g) => (
+          <section key={g.title} className="mb-7" aria-label={g.title}>
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{g.title}</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {g.items.map((t) => (
+                <button key={t.id} onClick={() => setTopic(t.id)} className="panel group flex items-start gap-4 rounded-3xl p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-accent">
+                  <TopicIcon id={t.id} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-base font-semibold">{t.title}</span>
+                      <svg viewBox="0 0 24 24" className="size-5 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" fill="currentColor" aria-hidden="true"><path d="m10 6-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6-6-6Z" /></svg>
+                    </span>
+                    <span className="mt-1 block text-sm text-muted">{t.text}</span>
+                    {(t.advanced || t.owner) && <span className="mt-2 inline-block rounded-full bg-foreground/10 px-2.5 py-0.5 text-xs text-muted">{t.owner ? 'Owner only' : 'For experts'}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
     )
   }
@@ -193,21 +218,26 @@ export default function Settings() {
     <div>
       <PageHead title={cur.title} sub={cur.text} onBack={back} />
       <Confirm open={discard} title="Drop your changes?" text="You have changes that are not saved. Leaving now discards them." onClose={() => setDiscard(false)} onOk={() => { cancelEdit(); setDiscard(false); setTopic(null) }} />
-      {cur.id === 'general' && <General />}
+      {cur.id === 'calendar' && <General part="calendar" />}
+      {cur.id === 'holidays' && <General part="holidays" />}
+      {cur.id === 'notice' && <General part="notice" />}
       {cur.id === 'fields' && <Fields />}
-      {cur.id === 'lists' && <Lists />}
+      {cur.id === 'reasons' && <ReasonsPanel />}
+      {cur.id === 'teams' && <TeamsPanel />}
       {cur.id === 'sla' && <Sla />}
-      {cur.id === 'workflow' && <Workflow />}
+      {cur.id === 'actions' && <WorkflowActions />}
+      {cur.id === 'slawf' && <SlaWorkflow />}
       {cur.id === 'activity' && <Suspense fallback={null}><Activity /></Suspense>}
       {cur.id === 'data' && isOwner() && <Data />}
-      {cur.id === 'people' && isOwner() && <Pair items={[['users', 'People', <Users />], ['access', 'Roles and permissions', <Access />]]} />}
+      {cur.id === 'users' && isOwner() && <Suspense fallback={null}><Users /></Suspense>}
+      {cur.id === 'access' && isOwner() && <Suspense fallback={null}><Access /></Suspense>}
       {cur.id === 'connect' && <Suspense fallback={null}><Sources /></Suspense>}
     </div>
   )
 }
 
 /* ---------------- General ---------------- */
-function General() {
+function General({ part }: { part: 'calendar' | 'holidays' | 'notice' }) {
   const s = useApp()
   const st = s.settings, n = st.notice
   const offCal = !canEdit('calendar'), offNotice = !canEdit('notice'), offHol = !canEdit('holidays')
@@ -216,15 +246,14 @@ function General() {
   const numSet = (set: (v: number) => void) => (v: string) => { set(Number(v)); commit() }
   return (
     <>
-      {sectionCard('Calendar and alerts', (
+      {part === 'calendar' && sectionCard('Calendar and Alerts', (
         <div className="grid gap-4 sm:grid-cols-3">
           <Pick label="Weekend" disabled={offCal} value={st.weekend} onChange={(v) => { st.weekend = v as 'FS' | 'SS'; commit() }} options={[{ v: 'FS', l: 'Friday + Saturday' }, { v: 'SS', l: 'Saturday + Sunday' }]} />
           <TextInput label="Due Soon window (days)" type="number" disabled={offCal} value={String(st.dueSoon)} onChange={numSet((v) => { st.dueSoon = v })} />
           <TextInput label="Report date override (optional)" type="date" disabled={offCal} value={st.reportDate} onChange={(v) => { st.reportDate = v; commit() }} />
         </div>
       ), undefined, 'calendar')}
-      <WorkingDay />
-      {sectionCard('Notice-period check', (
+      {part === 'notice' && sectionCard('Notice-Period Check', (
         <div className="grid gap-4 sm:grid-cols-3">
           <Pick label="Hire date field" disabled={offNotice} value={n.hireField} onChange={(v) => { n.hireField = v; commit() }} options={dateOpts} />
           <Pick label="Request date field" disabled={offNotice} value={n.requestField} onChange={(v) => { n.requestField = v; commit() }} options={dateOpts} />
@@ -233,8 +262,8 @@ function General() {
           <TextInput label="Months when service ≤ threshold" type="number" disabled={offNotice} value={String(n.short)} onChange={numSet((v) => { n.short = v })} />
           <TextInput label="Months when service > threshold" type="number" disabled={offNotice} value={String(n.long)} onChange={numSet((v) => { n.long = v })} />
         </div>
-      ), 'Applies to reasons flagged "notice" in Reasons & groups. Choose which date fields it reads.', 'notice')}
-      {sectionCard('Holidays', (
+      ), 'Applies to reasons flagged "notice" in Termination reasons. Choose which date fields it reads.', 'notice')}
+      {part === 'holidays' && sectionCard('Holidays', (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <TextInput label="Date" type="date" disabled={offHol} value={hd} onChange={setHd} />
@@ -255,55 +284,12 @@ function General() {
   )
 }
 
-/* ---------------- End of the working day ---------------- */
-function WorkingDay() {
-  const live = useLive()
-  const can_ = isOwner() || session.role === 'Admin'
-  const [time, setTime] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false), [ask, setAsk] = useState(false)
-  const t = time ?? live.endTime
-  const s0 = useApp()
-  const lockOn = s0.settings.lockAfterClose ?? live.enabled
-  const left = minutesToClose(live)
-  const run = async (f: () => Promise<void>, ok: string) => { setBusy(true); try { await f(); toast.success(ok) } catch (e) { toast.danger(e instanceof Error ? e.message : String(e)) } setBusy(false) }
-  const hh = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(Math.floor(m % 60)).padStart(2, '0')}`
-  return sectionCard('End of the working day', !atlasReady() ? (
-    <p className="text-sm text-muted">The shared sheet needs the database. Add <code>VITE_DB_URL</code> to the .env file first.</p>
-  ) : (
-    <div className="grid gap-4">
-      <p className="text-sm">
-        Everyone signed in works on the same sheet, and changes show on every screen within a few seconds.
-        {live.sheet ? <> Today’s file: <b>{live.sheet.name}</b>, loaded by {live.sheet.by}.</> : ' No file is loaded.'}
-      </p>
-      <div className="flex flex-wrap items-end gap-4">
-        <Toggle on={live.enabled} disabled={!can_ || busy} label="Remove the file from the server at closing time" onChange={(v) => void run(() => saveLiveSettings(v, t), v ? `The file will be removed at ${t} every day` : 'The file stays on the server')} />
-        <TextInput label="Closing time" type="time" disabled={!can_} value={t} onChange={setTime} />
-        <Button variant="secondary" isDisabled={!can_ || busy || t === live.endTime} onPress={() => void run(() => saveLiveSettings(live.enabled, t), 'Closing time saved')}>Save time</Button>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-foreground/5 px-4 py-3">
-        <Toggle on={lockOn} disabled={!can_} label="Block adding leavers and imports after closing time" onChange={(v) => { s0.settings.lockAfterClose = v; commit(); toast.success(v ? 'Adding is blocked after the closing time' : 'Adding stays open after the closing time') }}>
-          <span className="text-sm font-medium">Block adding leavers and imports after the closing time</span>
-        </Toggle>
-        <span className="text-xs text-muted">Turn it off to keep Add leaver and Import available all day.</span>
-      </div>
-      <p className="text-sm text-muted">
-        Server time is {hh(live.nowMin + (Date.now() - live.readAt) / 60000)}.
-        {live.enabled && left !== null && left > 0 ? ` The file will be removed in ${Math.round(left)} minutes.` : live.enabled ? ' The next removal is tomorrow at closing time.' : ''}
-        {' '}People see a warning 30 minutes before, and the rules popup tells everyone.
-      </p>
-      <div><Button variant="danger" isDisabled={!hasExtra('removeFile') || busy} onPress={() => setAsk(true)}>Remove the file now</Button></div>
-      <Confirm open={ask} title="Remove the shared file?" text="Every leaver and task on the server is deleted for everyone, right now. Export first if you need a copy." onClose={() => setAsk(false)} onOk={() => void run(removeSharedFile, 'The shared file was removed')} />
-      {!can_ && <p className="text-sm text-muted">Only the Owner or an Admin can change this.</p>}
-    </div>
-  ))
-}
-
 /* ---------------- Fields ---------------- */
 function Fields() {
   const s = useApp()
   const off = !canEdit('fields')
   const [edit, setEdit] = useState<{ f: Field | null } | null>(null)
-  const [info, setInfo] = useState<{ title: string; text: string } | null>(null)
+  const [info, setInfo] = useState<{ title: string; text: React.ReactNode } | null>(null)
   const [del, setDel] = useState<string | null>(null)
   const use = E.usage(s)
   return (
@@ -314,7 +300,7 @@ function Fields() {
         <Button isDisabled={off} onPress={() => setEdit({ f: null })}>Add field</Button>
       </div>
       <DataTable label="Fields"
-        cols={[{ key: 'l', label: 'Label' }, { key: 'k', label: 'Key' }, { key: 't', label: 'Type' }, { key: 's', label: 'Section' }, { key: 'r', label: 'Required' }, { key: 'li', label: 'In list' }, { key: 'u', label: 'Used by' }, { key: 'a', label: '' }]}
+        cols={[{ key: 'l', label: 'Label' }, { key: 'k', label: 'Key' }, { key: 't', label: 'Type' }, { key: 's', label: 'Section' }, { key: 'r', label: 'Required' }, { key: 'li', label: 'In list' }, { key: 'u', label: 'What it affects' }, { key: 'a', label: '' }]}
         rows={s.fields.map((f, i) => ({
           id: f.key,
           cells: [
@@ -324,7 +310,7 @@ function Fields() {
             f.section,
             f.required ? 'Always' : f.requiredFor.length ? `For ${f.requiredFor.length} reason(s)` : '—',
             f.showInList ? 'Yes' : '—',
-            <span key="u" className="text-sm text-muted">{use.field(f.key).join(', ') || '—'}</span>,
+            <button key="u" type="button" className="text-left text-sm text-accent underline-offset-2 hover:underline" onClick={() => setInfo({ title: `What “${f.label}” affects`, text: <ul className="list-disc space-y-1 pl-5 text-left">{E.impactOf(s, f).map((x) => <li key={x}>{x}</li>)}</ul> })}>{E.impactOf(s, f).length - 1} effects</button>,
             <div key="a" className="flex gap-1">
               <Button size="sm" variant="ghost" isIconOnly aria-label="Move up" isDisabled={off} onPress={() => move(s.fields, i, -1)}>↑</Button>
               <Button size="sm" variant="ghost" isIconOnly aria-label="Move down" isDisabled={off} onPress={() => move(s.fields, i, 1)}>↓</Button>
@@ -464,10 +450,6 @@ function Sla() {
 }
 
 /** Two sections: the actions everyone can take on any task, and the actions each SLA rule has of its own. */
-function Workflow() {
-  return <Pair items={[['actions', 'Actions', <WorkflowActions key="a" />], ['sla', 'SLA workflow', <SlaWorkflow key="s" />]]} />
-}
-
 /** The task actions: add or remove any, name them, say what each does and asks for. Descriptions go to the activity log only. */
 function WorkflowActions() {
   const s = useApp()
@@ -691,7 +673,7 @@ function StepForm({ step, onClose }: { step: Step | null; onClose: () => void })
         <Pick label="Team" value={d.group} onChange={(v) => patch({ group: v })} options={s.groups.map((g) => ({ v: g, l: g }))} />
         <TextInput className="sm:col-span-2" label="Task name" value={d.name} onChange={(v) => patch({ name: v })} placeholder="What has to be done" />
 
-        <h3 className="font-serif text-lg sm:col-span-2">SLA clock</h3>
+        <h3 className="font-serif text-lg sm:col-span-2">SLA Clock</h3>
         <Pick label="Clock starts from" value={d.start.type} onChange={(v) => patch({ start: v === 'field' ? { type: 'field', field: dateOpts[0]?.v ?? '' } : v === 'step' ? { type: 'step', step: others[0]?.id ?? '' } : { type: 'none' } })}
           options={[{ v: 'none', l: 'No SLA (tracked only)' }, { v: 'field', l: 'A date field' }, { v: 'step', l: "Another step's completion" }]} />
         {d.start.type === 'field' && <Pick label="Date field" value={d.start.field} onChange={(v) => patch({ start: { type: 'field', field: v } })} options={dateOpts} />}
@@ -771,10 +753,6 @@ function RowMenu({ name, i, n, off, onMove, onDelete }: { name: string; i: numbe
 }
 
 /** Two tabs, one job each: why people leave, and who does the work. */
-function Lists() {
-  return <Pair items={[['reasons', 'Termination reasons', <ReasonsPanel key="r" />], ['teams', 'Teams & members', <TeamsPanel key="t" />]]} />
-}
-
 function ReasonsPanel() {
   const s = useApp()
   const off = !canEdit('reasons')

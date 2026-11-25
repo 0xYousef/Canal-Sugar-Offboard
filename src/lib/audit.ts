@@ -22,6 +22,7 @@ const notify = () => { version++; listeners.forEach((f) => f()) }
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(entries.slice(0, KEEP))) } catch { /* ignore */ } }
 const newId = () => 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36)
 
+export const auditEntries = () => entries
 export function useAudit() {
   useSyncExternalStore((cb) => { listeners.add(cb); return () => { listeners.delete(cb) } }, () => version)
   return { entries, waiting: entries.filter((e) => !e.sent).length, status }

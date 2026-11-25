@@ -25,29 +25,29 @@
     --bg-base: oklch(97% 0.02 160);
   }
   .dark, [data-theme="dark"] {
-    /* Soft slate tinted with the section colour, not pure black */
-    --background: oklch(30% 0.03 var(--hue));
-    --foreground: oklch(97% 0.006 var(--hue));
-    --muted: oklch(82% 0.02 var(--hue));
-    --accent: oklch(70% 0.15 var(--hue));
-    --accent-foreground: oklch(18% 0.03 var(--hue));
-    --panel: oklch(38% 0.035 var(--hue) / .7);
-    --panel-edge: rgb(255 255 255 / .13);
-    --panel-shadow: 0 1px 0 rgb(255 255 255 / .08) inset, 0 14px 32px -16px rgb(0 0 0 / .55);
-    --field: rgb(255 255 255 / .12);
-    --field-edge: rgb(255 255 255 / .28);
-    --pop: oklch(37% 0.035 var(--hue) / .97);
-    --row-hover: rgb(255 255 255 / .09);
-    --bg-a: oklch(46% 0.1 var(--hue)); --bg-b: oklch(40% 0.08 calc(var(--hue) - 30)); --bg-c: oklch(41% 0.08 calc(var(--hue) + 35));
-    --bg-base: oklch(28% 0.028 var(--hue));
+    /* Charcoal: neutral black-gray surfaces, layered so cards read clearly. Colour only comes from the accent. */
+    --background: oklch(23% 0.004 var(--hue));
+    --foreground: oklch(96% 0.003 var(--hue));
+    --muted: oklch(77% 0.006 var(--hue));
+    --accent: oklch(72% 0.14 var(--hue));
+    --accent-foreground: oklch(17% 0.02 var(--hue));
+    --panel: oklch(30% 0.005 var(--hue) / .82);
+    --panel-edge: rgb(255 255 255 / .11);
+    --panel-shadow: 0 1px 0 rgb(255 255 255 / .06) inset, 0 12px 28px -16px rgb(0 0 0 / .6);
+    --field: rgb(255 255 255 / .08);
+    --field-edge: rgb(255 255 255 / .22);
+    --pop: oklch(32% 0.005 var(--hue) / .98);
+    --row-hover: rgb(255 255 255 / .07);
+    --bg-a: oklch(31% 0.03 var(--hue)); --bg-b: oklch(27% 0.008 var(--hue)); --bg-c: oklch(28% 0.02 var(--hue));
+    --bg-base: oklch(20% 0.004 var(--hue));
   }
 }
 
 /* Every section has its own colour. The circular reveal carries it in. */
 html[data-section="dashboard"] { --hue: 160; }
 html[data-section="leavers"]   { --hue: 250; }
-html[data-section="tasks"]     { --hue: 55; }
-html[data-section="reports"]   { --hue: 305; }
+html[data-section="tasks"]     { --hue: 285; }
+html[data-section="reports"]   { --hue: 350; }
 html[data-section="settings"]  { --hue: 200; }
 html[data-section="guide"]     { --hue: 100; }
 
@@ -171,3 +171,23 @@ h1 { font-weight: 600; }
 }
 .button--danger-soft:hover { background: color-mix(in oklch, var(--danger) 22%, transparent); }
 .button[disabled], .button[data-disabled] { opacity: .5; box-shadow: none; filter: none; }
+
+/* Guide help button: frosted glass pill. The accent shows in the question mark badge only, so it never shouts. */
+.guide-fab {
+  background: var(--panel); color: var(--foreground);
+  border: 1px solid var(--panel-edge); box-shadow: var(--panel-shadow), 0 10px 24px -12px rgb(0 0 0 / .45);
+  backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition: transform .15s, box-shadow .2s, border-color .2s;
+}
+.guide-fab__icon {
+  margin: .4rem; width: 2.5rem; height: 2.5rem;
+  background: var(--accent); color: var(--accent-foreground);
+  box-shadow: 0 1px 0 rgb(255 255 255 / .35) inset, 0 6px 14px -6px var(--accent);
+  transition: transform .25s;
+}
+.guide-fab__label { max-width: 0; opacity: 0; transition: max-width .25s ease, opacity .2s ease, padding .25s ease; }
+.guide-fab:hover .guide-fab__label, .guide-fab:focus-visible .guide-fab__label { max-width: 8rem; opacity: 1; padding-right: 1.1rem; }
+.guide-fab:hover { transform: translateY(-2px); border-color: color-mix(in oklch, var(--accent) 60%, transparent); }
+.guide-fab:hover .guide-fab__icon { transform: rotate(-8deg) scale(1.06); }
+.guide-fab:active { transform: scale(.97); }
+.guide-fab.is-active { border-color: var(--accent); box-shadow: var(--panel-shadow), 0 0 0 3px color-mix(in oklch, var(--accent) 35%, transparent); }

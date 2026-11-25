@@ -47,3 +47,6 @@ The project root has a `render.yaml`. In Render choose New, Blueprint, pick the 
 (`MONGODB_URI`, `ALLOWED_ORIGIN`, `OWNER_EMAIL`, `DEFAULT_PASSWORD`). Render makes `API_KEY` and `SESSION_SECRET` for you: open the
 service's Environment tab, copy `API_KEY` into Vercel as `VITE_DB_KEY`, and set `VITE_DB_URL` to the service address.
 Use a paid instance: the free one sleeps when idle, so the daily removal would not run. `/healthz` is the health check (it needs no key and returns no data).
+
+## Live reports for Excel
+Set `REPORT_KEY` (a long random secret) to switch on `GET /report/data?table=cases|tasks|teams|summary&format=csv|json|html&key=...`. See `samples/live-reports/README.md`. After changing `src/lib` report code, run `npm run build:gateway` and commit `gateway/report-data.mjs`.

@@ -8,13 +8,18 @@ import { removeDemoLeavers } from '../../lib/start'
 import { afterClose, noteSheet, useLive } from '../../lib/live'
 
 const isAdmin = () => can('settings', 'edit')
-import { autoMap, buildPreview, parseFile, exportImportReport, replacePlan, runImport, type ImportMode, type Table } from '../../lib/importer'
+import { autoMap, buildPreview, downloadTemplate, parseFile, exportImportReport, replacePlan, runImport, type ImportMode, type Table } from '../../lib/importer'
 import { DataTable, Dialog, Pick, SectionTitle } from '../../ui/kit'
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 /* ---------------- read a file ---------------- */
 interface Fetched { name: string; blob: Blob }
+
+function ColChip({ label, state: st, req }: { label: string; state: 'idle' | 'ok' | 'missing'; req?: boolean }) {
+  const tone = st === 'ok' ? 'bg-success/15 text-success' : st === 'missing' ? (req ? 'bg-danger/15 text-danger' : 'bg-foreground/10 text-muted') : 'bg-foreground/10'
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tone}`}>{st === 'ok' ? '✓ ' : st === 'missing' && req ? '✕ ' : ''}{label}</span>
+}
 
 export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean }) {
   const live = useLive()
@@ -49,6 +54,8 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
   const bad = preview.filter((r) => r.errors.length).length
   const fieldOpts = [{ v: '', l: '— skip this column —' }, ...state.fields.map((f) => ({ v: f.key, l: f.label }))]
 
+  /** Once a file is loaded, show which fields found a column. Before that, nothing is ticked. */
+  const colState = (key: string): 'idle' | 'ok' | 'missing' => !table ? 'idle' : Object.values(map).includes(key) ? 'ok' : 'missing'
   const doImport = async () => {
     if (first) removeDemoLeavers()
     const r = runImport(state, preview, mode)
@@ -64,10 +71,27 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
 
   return (
     <>
-      {!first && <SectionTitle title="Read a file" aside="CSV, Excel (.xlsx) or JSON" />}
+      {!first && <SectionTitle title="Read a File" aside="CSV, Excel (.xlsx) or JSON" />}
       {closed && <p role="status" className="mb-3 rounded-2xl bg-warning/10 px-4 py-3 text-sm">The working day ended at <b>{live.endTime}</b>. Importing is closed until tomorrow.</p>}
       <Card>
         <Card.Content className="gap-4">
+          <div className="rounded-2xl bg-foreground/5 p-4 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <b>Columns your file needs</b>
+              <Button size="sm" variant="secondary" onPress={() => void downloadTemplate(state).catch((e) => toast.danger(msg(e)))}>Download Excel template</Button>
+            </div>
+            <p className="mt-1 text-muted">Column names must match the field names below (or you match them by hand after loading). A row missing a required column is skipped. <b>Employee ID</b> identifies each person and must be unique.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Required</p>
+                <div className="flex flex-wrap gap-1.5">{state.fields.filter((f) => f.required || f.key === 'empId').map((f) => <ColChip key={f.key} label={f.label} state={colState(f.key)} req />)}</div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Optional</p>
+                <div className="flex flex-wrap gap-1.5">{state.fields.filter((f) => !f.required && f.key !== 'empId').map((f) => <ColChip key={f.key} label={f.requiredFor?.length ? `${f.label} (by reason)` : f.label} state={colState(f.key)} />)}</div>
+              </div>
+            </div>
+          </div>
           <input ref={pick} type="file" hidden accept=".csv,.xlsx,.json,text/csv" onChange={(e) => { void onLocal(e.target.files?.[0]); e.target.value = '' }} />
           <div role="button" tabIndex={0} aria-label="Choose a file, or drop it here" aria-disabled={off}
             onClick={() => !off && pick.current?.click()} onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !off) { e.preventDefault(); pick.current?.click() } }}
@@ -91,7 +115,7 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
           {table && (
             <>
               <div>
-                <h3 className="mb-2 font-serif text-lg">Match columns to fields</h3>
+                <h3 className="mb-2 font-serif text-lg">Match Columns to Fields</h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {table.headers.map((h, i) => (
                     <Pick key={i} label={`Column “${h || i + 1}”`} value={map[i] ?? ''}
@@ -114,7 +138,7 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
                   { v: 'append', l: 'Append: add only new employees, keep existing ones' },
                   { v: 'replace', l: 'Replace: the file becomes the full list' },
                 ]} />
-                <Button variant={mode === 'replace' ? 'danger' : 'primary'} isDisabled={off || !preview.length || !map || !Object.values(map).includes('name')} onPress={() => (mode === 'replace' ? setConfirming(true) : doImport())}>
+                <Button variant={mode === 'replace' ? 'danger' : 'primary'} isDisabled={off || !preview.length || !map || !Object.values(map).includes('empId')} onPress={() => (mode === 'replace' ? setConfirming(true) : doImport())}>
                   {mode === 'replace' ? 'Replace with' : 'Import'} {preview.filter((r) => !r.errors.length).length} rows
                 </Button>
               </div>
@@ -122,7 +146,7 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
                 footer={<><Button variant="tertiary" onPress={() => setConfirming(false)}>Cancel</Button><Button variant="danger" onPress={doImport}>Yes, replace</Button></>}>
                 {plan && (
                   <div className="grid gap-3 text-sm">
-                    <p>Leavers are compared by <b>Employee ID</b>{hasId ? '' : ', but no column is matched to it, so names are used instead'}.</p>
+                    <p>Leavers are compared by <b>Employee ID</b>{hasId ? '' : '. No column is matched to it yet, so every row will be skipped'}.</p>
                     <ul className="list-disc pl-5">
                       <li><b>{plan.matched}</b> already in the portal and in this file: updated, their task progress is kept.</li>
                       <li><b>{plan.added}</b> new in this file: added.</li>
@@ -137,7 +161,7 @@ export function Reader({ onDone, first }: { onDone?: () => void; first?: boolean
                   </div>
                 )}
               </Dialog>
-              {!Object.values(map).includes('name') && <p className="text-sm text-warning">Match one column to “Employee name” to enable import.</p>}
+              {!Object.values(map).includes('empId') && <p className="text-sm text-warning">Match one column to “Employee ID” to enable import.</p>}
             </>
           )}
         </Card.Content>

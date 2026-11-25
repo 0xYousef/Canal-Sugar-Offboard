@@ -1,5 +1,5 @@
 // Turn a downloaded file into leavers: parse (CSV / Excel / JSON), map columns to fields, import.
-import { fieldByKey } from './engine'
+import { fieldByKey, idKey, missingRequired } from './engine'
 import { ensureSnapshot } from './snapshot'
 import { uid } from './store'
 import type { Field, Leaver, State } from './types'
@@ -96,6 +96,7 @@ function convert(s: State, f: Field, raw: string): { v: string } | { err: string
 
 export interface PreviewRow { values: Record<string, string>; errors: string[]; match: 'new' | 'update' | 'skip' }
 export function buildPreview(s: State, table: Table, map: Record<number, string>): PreviewRow[] {
+  const seen = new Set<string>()
   return table.rows.map((r) => {
     const values: Record<string, string> = {}, errors: string[] = []
     Object.entries(map).forEach(([i, key]) => {
@@ -105,17 +106,21 @@ export function buildPreview(s: State, table: Table, map: Record<number, string>
       if ('err' in c) errors.push(c.err); else values[key] = c.v
     })
     const found = findExisting(s, values)
-    const match = !values.name ? 'skip' : found ? 'update' : 'new'
-    if (!values.name) errors.unshift('Missing employee name')
+    const match = !values.empId ? 'skip' : found ? 'update' : 'new'
+    const miss = missingRequired(s, values).filter((l) => l !== fieldByKey(s, 'empId')?.label)
+    if (miss.length) errors.push(`Missing required data: ${miss.join(', ')}`)
+    if (!values.empId) errors.unshift('Missing Employee ID')
+    else if (seen.has(idKey(values.empId))) errors.unshift(`Employee ID ${values.empId} appears more than once in the file`)
+    else seen.add(idKey(values.empId))
     return { values, errors, match }
   })
 }
 const findExisting = (s: State, v: Record<string, string>) =>
-  s.leavers.find((l) => (v.empId && l.values.empId === v.empId) || (!v.empId && v.name && l.values.name?.toLowerCase() === v.name.toLowerCase()))
+  v.empId ? s.leavers.find((l) => idKey(l.values.empId) === idKey(v.empId)) : undefined
 
 export type ImportMode = 'append' | 'replace'
 
-/** What "replace" would do, judged by Employee ID (name only when a row has no ID). */
+/** What "replace" would do, judged by Employee ID. */
 export function replacePlan(s: State, rows: PreviewRow[]) {
   const ok = rows.filter((r) => r.match !== 'skip' && !r.errors.length)
   const keep = new Set<Leaver>()
@@ -157,4 +162,18 @@ export async function exportImportReport(s: State, added: Record<string, string>
     { data: sheet(added), sheet: 'New employees', columns },
     { data: sheet(existing), sheet: 'Already existed', columns },
   ]).toFile(`import-${fileName.replace(/\.[^.]+$/, '')}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+}
+
+/** Excel template: one header row with every field's label, required ones starred in the notes sheet. */
+export async function downloadTemplate(s: State) {
+  const { default: write } = await import('write-excel-file/browser')
+  const head = s.fields.map((f) => ({ value: f.label, fontWeight: 'bold' as const }))
+  const notes = [
+    [{ value: 'Column', fontWeight: 'bold' as const }, { value: 'Needed?', fontWeight: 'bold' as const }, { value: 'Format', fontWeight: 'bold' as const }],
+    ...s.fields.map((f) => [{ value: f.label }, { value: f.required ? 'Required' : f.requiredFor?.length ? `Required for reason ${f.requiredFor.join(', ')}` : 'Optional' }, { value: f.type === 'date' ? 'Date, e.g. 2026-12-31' : f.type === 'reason' ? 'A reason name or ID from Settings' : f.type === 'select' ? 'One of the list values' : 'Text' }]),
+  ]
+  await write([
+    { data: [head], sheet: 'Leavers', columns: s.fields.map(() => ({ width: 22 })) },
+    { data: notes, sheet: 'Columns guide', columns: [{ width: 28 }, { width: 34 }, { width: 40 }] },
+  ]).toFile('leavers-template.xlsx')
 }

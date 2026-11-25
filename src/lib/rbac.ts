@@ -10,10 +10,10 @@ export type Perm = 'view' | 'edit' | 'action'
 
 export const MODULES: { id: Module; label: string; perms: Perm[]; edit?: string; action?: string }[] = [
   { id: 'dashboard', label: 'Dashboard', perms: ['view', 'action'], action: 'Mark tasks from the attention list' },
-  { id: 'leavers', label: 'Leavers', perms: ['view', 'edit', 'action'], edit: 'Add, change and delete leavers', action: 'Take action on a leaver’s tasks' },
+  { id: 'leavers', label: 'Leavers', perms: ['view', 'edit', 'action'], edit: 'Add and change leavers (including their rules)', action: 'Take action on a leaver’s tasks' },
   { id: 'tasks', label: 'Tasks', perms: ['view', 'action'], action: 'Take action on tasks' },
-  { id: 'reports', label: 'Reports', perms: ['view', 'action'], action: 'Download CSV reports' },
-  { id: 'settings', label: 'Settings', perms: ['view', 'edit'], edit: 'Change rules, lists and data' },
+  { id: 'reports', label: 'Reports', perms: ['view', 'action'], action: 'Export Excel and CSV, and print reports' },
+  { id: 'settings', label: 'Settings', perms: ['view', 'edit'], edit: 'Change rules, fields, lists, teams and calendar' },
   { id: 'logs', label: 'Activity log', perms: ['view', 'action'], action: 'Export the log to Excel' },
   { id: 'guide', label: 'Guide', perms: ['view', 'edit'], edit: 'Change the video links' },
 ]
@@ -21,10 +21,11 @@ export const PERM_LABEL: Record<Perm, string> = { view: 'View', edit: 'Edit', ac
 export const ADMIN = 'Admin'
 
 /** Extra rights, switched on per role. Admin and the Owner always have them. */
-export type Extra = 'import' | 'removeFile' | 'restore'
+export type Extra = 'import' | 'removeFile' | 'archive' | 'restore'
 export const EXTRAS: { id: Extra; label: string; text: string }[] = [
   { id: 'import', label: 'Import leavers', text: 'Load a leaver list from a CSV, Excel or JSON file (Settings, Import leavers).' },
   { id: 'removeFile', label: 'Remove the shared file', text: 'Delete the shared sheet from the server for everyone, before closing time.' },
+  { id: 'archive', label: 'Archive leavers', text: 'Move a leaver to the archive by hand. Leavers at 100% are archived automatically.' },
   { id: 'restore', label: 'Restore archived leavers', text: 'Bring a leaver back from the archive. They must also be allowed to see the archive.' },
 ]
 export interface Role { name: string; perms: Partial<Record<Module, Perm[]>>; teams: string[] | null; extras?: Extra[] }
@@ -79,7 +80,7 @@ const guard = () => session.owner
 /** Starting points for a new role. Everything can still be changed switch by switch afterwards. */
 export type Template = 'view' | 'junior' | 'lead'
 export const TEMPLATES: { id: Template; label: string; text: string }[] = [
-  { id: 'view', label: 'View only', text: 'Sees every section except the activity log. Cannot change or act.' },
+  { id: 'view', label: 'View only', text: 'Sees every section except the activity log. Cannot change, act or export.' },
   { id: 'junior', label: 'Junior: can take action', text: 'Sees every section and can take action on tasks (done, waive, block) and export from Reports. Cannot edit leavers or settings.' },
   { id: 'lead', label: 'Team lead: edit and take action', text: 'Everything a junior can do, and can also add, edit and delete leavers.' },
 ]

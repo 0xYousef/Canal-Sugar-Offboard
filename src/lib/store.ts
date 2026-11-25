@@ -14,6 +14,22 @@ function valid(s: unknown): s is State {
   return !!x && Array.isArray(x.steps) && Array.isArray(x.leavers) && Array.isArray(x.fields) && Array.isArray(x.reasons) && Array.isArray(x.groups) && !!x.settings
 }
 /** Older saves had Department as free text. Make it a dropdown, keeping every name already typed. */
+/** Employee ID is the unique identifier (always required); the name is optional. Also applied to configuration that arrives from the shared database. */
+export function ensureIdentity(s: State) {
+  const idf = s.fields.find((x) => x.key === 'empId')
+  if (idf) { idf.builtin = true; idf.required = true }
+  const nf = s.fields.find((x) => x.key === 'name')
+  if (nf) nf.required = false
+  // Email was added later: older saves get it once, right after Employee ID, and the admin can edit or remove it.
+  if (!s.settings.emailField) {
+    s.settings.emailField = true
+    if (!s.fields.some((x) => x.key === 'email')) { const at = s.fields.findIndex((x) => x.key === 'empId'); s.fields.splice(at + 1, 0, { key: 'email', label: 'Email', type: 'text', section: 'Employee', builtin: false, required: false, requiredFor: [], showInList: false }) }
+  }
+  const sf = s.fields.find((x) => x.key === 'site')
+  if (sf && sf.label === 'Site') sf.label = 'Location'   // renamed; the key stays, so saved data and imports with a Site column still match
+  // Department and Location become required once. Afterwards the admin can switch it off in Settings.
+  if (!s.settings.deptSiteRequired) { s.fields.forEach((f) => { if (f.key === 'dept' || f.key === 'site') f.required = true }); s.settings.deptSiteRequired = true }
+}
 function migrate(s: State): State {
   // Action records were first saved under "STEP#ACTION", which the shared database refuses; they live under "STEP__ACTION" now.
   s.leavers.forEach((l) => Object.keys(l.tasks).forEach((k) => { if (k.includes('#')) { const n = k.replace('#', '__'); if (!(n in l.tasks)) l.tasks[n] = l.tasks[k]; delete l.tasks[k] } }))
@@ -22,6 +38,8 @@ function migrate(s: State): State {
   s.settings.flow = normalizeFlow(s.settings.flow ?? JSON.parse(JSON.stringify(DEFAULT_FLOW)))
   // Leavers created before rules were frozen per leaver get the rules as configured now, once.
   s.leavers.forEach((l) => ensureSnapshot(s, l))
+  // Employee ID is the unique identifier: always built in and required.
+  ensureIdentity(s)
   const f = s.fields.find((x) => x.key === 'dept')
   if (f && f.type === 'text') {
     const seen = s.leavers.map((l) => (l.values.dept ?? '').trim()).filter(Boolean)

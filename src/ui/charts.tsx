@@ -55,7 +55,7 @@ export function Columns({ cols, parts, max: limit = 7 }: { cols: { label: string
   const short = (s: string) => (s.length > 6 ? s.slice(0, 5) + '.' : s)
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className={`w-full ${AXIS}`} role="img" aria-label={`Deadlines by owner: ${all.map((c) => `${c.label} ${c.t}`).join(', ')}`}>
+      <svg viewBox={`0 0 ${W} ${H}`} className={`w-full ${AXIS}`} role="img" aria-label={`Task results by team: ${all.map((c) => `${c.label} ${c.t}`).join(', ')}`}>
         {[0, 0.5, 1].map((f) => <g key={f}><line x1={pl} x2={W} y1={y(nice * f)} y2={y(nice * f)} stroke="currentColor" strokeOpacity=".1" /><text x="0" y={y(nice * f) + 3}>{Math.round(nice * f)}</text></g>)}
         {all.map((c, i) => {
           const x = pl + i * slot + (slot - bw) / 2

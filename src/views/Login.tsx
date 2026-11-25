@@ -54,7 +54,7 @@ export default function Login() {
 
         <main className="glass mx-auto w-full max-w-md rounded-[2rem] p-8 sm:p-10">
           <div className="mb-7 flex items-center gap-3 lg:hidden"><Logo size={44} /><span className="font-serif text-lg font-semibold">Canal Sugar Offboarding</span></div>
-          <h2 className="text-3xl font-semibold">Welcome back</h2>
+          <h2 className="text-3xl font-semibold">Welcome Back</h2>
           <p className="mb-7 mt-1 text-sm text-muted">Sign in to see your leavers and tasks.</p>
           <form onSubmit={submit} className="grid gap-4" noValidate>
             <TextField value={email} onChange={setEmail} aria-label="Email or username" autoFocus>

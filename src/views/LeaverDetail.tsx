@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Button, Card } from '@heroui/react'
+import { Button } from '@heroui/react'
 import { setRuleActive } from '../lib/tasks'
 import { refreshSnapshot } from '../lib/snapshot'
 import * as E from '../lib/engine'
 import { fmt } from '../lib/dates'
-import { display } from '../lib/fields'
+import { SECTIONS, display } from '../lib/fields'
 import { commit, session, useApp } from '../lib/store'
-import { can, canSeeArchive, hasExtra, isOwner } from '../lib/rbac'
+import { can, canSeeArchive, hasExtra } from '../lib/rbac'
 import { log } from '../lib/audit'
 import { TaskAction, TaskStatus } from '../ui/TaskMenu'
 import type { TaskRow } from '../lib/types'
@@ -44,35 +44,80 @@ export default function LeaverDetail({ id }: { id: string }) {
     <div>
       <PageHead
         onBack={() => go('leavers')}
-        title={l.values.name || '(no name)'}
+        title={l.values.name || l.values.empId || '(no name)'}
         sub={`${l.values.dept || ''} · ${reason ? reason.name : 'No reason set'} · ${subDate(s)}`}
         actions={<>
           {can('leavers', 'edit') && !archived && <Button variant="secondary" onPress={() => setEditing(true)}>Edit details</Button>}
           {archived
             ? hasExtra('restore') && <Button variant="secondary" onPress={() => { delete l.values[E.ARCHIVED]; delete l.values[E.ARCHIVED + 'By']; l.values[E.KEEP] = '1'; log('Leaver restored', 'The leaver was taken out of the archive.', l.values.name || l.id); commit() }}>Restore</Button>
-            : isOwner() && <Button variant="danger-soft" onPress={() => setDeleting(true)}>Archive</Button>}
+            : hasExtra('archive') && <Button variant="danger-soft" onPress={() => setDeleting(true)}>Archive</Button>}
         </>}
       />
       {archived && <p role="status" className="mb-4 rounded-2xl bg-warning/10 px-4 py-3 text-sm"><b>Archived.</b> This leaver is hidden from everyone except people the Owner has allowed. {hasExtra('restore') ? 'Press Restore to bring them back.' : 'Only the Owner, or a role allowed to restore, can bring them back.'}</p>}
-      <Card>
-        <Card.Content className="gap-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="min-w-56 flex-1">
-              <div className="flex items-center gap-3"><div className="flex-1"><Meter pct={sum.pct} label="Progress" /></div><b className="num">{sum.pct}%</b></div>
-              <div className="mt-1 text-sm text-muted">{sum.done} of {sum.base} tasks done{sum.waived ? ` · ${sum.waived} waived` : ''}</div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="glass-card rounded-3xl p-5 lg:col-span-1" aria-label="Progress">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted">Progress</p>
+              <p className="num font-serif text-5xl font-semibold leading-none">{sum.pct}<span className="text-2xl text-muted">%</span></p>
             </div>
             <StatusChip text={sum.status} />
           </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
-            {s.fields.filter((f) => f.key !== 'name' && f.type !== 'textarea').map((f) => (
-              <div key={f.key}><dt className="text-muted">{f.label}</dt><dd>{display(s, f, l.values[f.key])}</dd></div>
-            ))}
-            <div><dt className="text-muted">Notice check</dt><dd>{n.tone === 'none' ? 'n/a' : <StatusChip text={n.text} />}{n.need && <span className="text-muted"> needs {fmt(n.need)} ({n.months} mo)</span>}</dd></div>
-          </dl>
-          {missing.length > 0 && <p className="text-sm text-warning"><b>Missing:</b> {missing.join(', ')}</p>}
-          {s.fields.filter((f) => f.type === 'textarea' && l.values[f.key]).map((f) => <p key={f.key} className="text-sm text-muted">{f.label}: {l.values[f.key]}</p>)}
-        </Card.Content>
-      </Card>
+          <div className="mt-4"><Meter pct={sum.pct} label="Progress" /></div>
+          <p className="mt-2 text-sm text-muted">{sum.done} of {sum.base} tasks done{sum.waived ? ` · ${sum.waived} waived` : ''}{sum.open ? ` · ${sum.open} open` : ''}</p>
+          {(sum.overdue > 0 || sum.blocked > 0 || sum.dueSoon > 0) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sum.overdue > 0 && <span className="rounded-full bg-danger/15 px-2.5 py-0.5 text-xs font-semibold text-danger">{sum.overdue} overdue</span>}
+              {sum.blocked > 0 && <span className="rounded-full bg-foreground/10 px-2.5 py-0.5 text-xs font-semibold">{sum.blocked} blocked</span>}
+              {sum.dueSoon > 0 && <span className="rounded-full bg-warning/20 px-2.5 py-0.5 text-xs font-semibold text-warning">{sum.dueSoon} due soon</span>}
+            </div>
+          )}
+          <div className="mt-4 rounded-2xl bg-foreground/5 p-3 text-sm">
+            <p className="text-muted">Notice check</p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-2">
+              {n.tone === 'none' ? <span className="text-muted">Not applicable</span> : <StatusChip text={n.text} />}
+              {n.need && <span className="text-muted">needs {fmt(n.need)} ({n.months} mo)</span>}
+            </p>
+          </div>
+        </section>
+
+        <section className="glass-card rounded-3xl p-5 lg:col-span-2" aria-label="Details">
+          {missing.length > 0 && (
+            <p role="status" className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl bg-warning/10 px-3 py-2 text-sm">
+              <b>Missing:</b>{missing.map((m) => <span key={m} className="rounded-full bg-warning/20 px-2 py-0.5 text-xs font-medium">{m}</span>)}
+            </p>
+          )}
+          <div className="grid gap-5 sm:grid-cols-2">
+            {SECTIONS.map((sec) => {
+              const fs = s.fields.filter((f) => f.key !== 'name' && f.type !== 'textarea' && (f.section || 'Other') === sec)
+              if (!fs.length) return null
+              return (
+                <div key={sec} className={sec === 'Dates' ? 'sm:col-span-2' : ''}>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{sec}</h3>
+                  <dl className={`grid gap-x-6 gap-y-3 text-sm ${sec === 'Dates' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
+                    {fs.map((f) => {
+                      const v = l.values[f.key]
+                      const key = f.key === 'empId' || f.key === 'lwd'
+                      return (
+                        <div key={f.key} className="min-w-0">
+                          <dt className="text-xs text-muted">{f.label}</dt>
+                          <dd className={`break-words ${!v ? 'text-muted' : key ? 'font-semibold' : 'font-medium'}`}>{v ? display(s, f, v) : '—'}</dd>
+                        </div>
+                      )
+                    })}
+                  </dl>
+                </div>
+              )
+            })}
+          </div>
+          {s.fields.filter((f) => f.type === 'textarea' && l.values[f.key]).map((f) => (
+            <div key={f.key} className="mt-5 rounded-2xl bg-foreground/5 p-3 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{f.label}</p>
+              <p className="mt-1 whitespace-pre-wrap">{l.values[f.key]}</p>
+            </div>
+          ))}
+        </section>
+      </div>
 
       <div className="mb-3 mt-8 flex items-baseline justify-between">
         <h2 className="text-2xl font-medium">Tasks</h2>
@@ -150,7 +195,7 @@ export default function LeaverDetail({ id }: { id: string }) {
       <Confirm
         open={deleting} title="Archive this leaver?" text="The leaver and their task history are kept, but hidden from the lists, tasks, dashboard and reports. Nobody can see them until you allow it for a person (Settings, People and access). You can restore them at any time."
         onClose={() => setDeleting(false)}
-        onOk={() => { l.values[E.ARCHIVED] = new Date().toISOString(); l.values[E.ARCHIVED + 'By'] = session.owner ? 'Owner' : ''; log('Leaver archived', 'The leaver was archived and hidden.', l.values.name || l.id); setDeleting(false); go('leavers'); commit() }}
+        onOk={() => { l.values[E.ARCHIVED] = new Date().toISOString(); l.values[E.ARCHIVED + 'By'] = session.owner ? 'Owner' : session.role; log('Leaver archived', 'The leaver was archived and hidden.', l.values.name || l.id); setDeleting(false); go('leavers'); commit() }}
       />
     </div>
   )

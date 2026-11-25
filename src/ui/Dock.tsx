@@ -58,7 +58,7 @@ export function Dock() {
   )
 }
 
-/** Help lives apart from the sections: a round button in the bottom-right corner. */
+/** Help lives apart from the sections: a round question-mark button in the bottom-left corner. */
 export function GuideButton() {
   const { page, go } = useNav()
   useRbac()
@@ -68,9 +68,11 @@ export function GuideButton() {
     <button
       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); go('guide', undefined, { x: r.left + r.width / 2, y: r.top + r.height / 2 }) }}
       aria-label="Guide: how to use this app" aria-current={active ? 'page' : undefined} title="Guide"
-      style={{ background: 'linear-gradient(145deg,#8b7bff,#5b45e6)', color: '#fff' }}
-      className={`fixed bottom-5 right-4 z-50 grid size-14 place-items-center rounded-full shadow-2xl shadow-[#5b45e6]/40 transition-transform hover:scale-105 active:scale-95 sm:right-8 ${active ? 'ring-4 ring-white/70' : ''}`}>
-      <svg viewBox="0 0 24 24" className="size-7" fill="currentColor" aria-hidden="true"><path d={ICONS.guide} /></svg>
+      className={`guide-fab group fixed bottom-5 left-4 z-50 flex h-14 items-center gap-0 rounded-full p-0 sm:left-8 ${active ? 'is-active' : ''}`}>
+      <span className="guide-fab__icon grid shrink-0 place-items-center rounded-full">
+        <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden="true"><path d="M11 18h2v-2h-2v2Zm1-16a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm0-14a4 4 0 0 0-4 4h2a2 2 0 1 1 2 2c-1.1 0-2 .9-2 2v1h2v-.5c0-.6.4-1 1-1.2A4 4 0 0 0 12 6Z" /></svg>
+      </span>
+      <span className="guide-fab__label overflow-hidden whitespace-nowrap text-sm font-semibold">Help &amp; Guide</span>
     </button>
   )
 }

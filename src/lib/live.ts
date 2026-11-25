@@ -6,7 +6,7 @@ import { ensureSnapshot } from './snapshot'
 import { useSyncExternalStore } from 'react'
 import { toast } from '@heroui/react'
 import { atlasCall, atlasQuery, atlasReady } from './atlas'
-import { afterCommit, applyRemote, state } from './store'
+import { afterCommit, applyRemote, ensureIdentity, state } from './store'
 import { resetStart } from './start'
 import type { Leaver } from './types'
 
@@ -112,7 +112,7 @@ async function pull() {
           if (i >= 0) state.leavers[i] = l; else state.leavers.push(l)
           synced.set(d.id, snap(l))
         }
-        if (j.cfg) { Object.assign(state, j.cfg); state.settings.flow = normalizeFlow(state.settings.flow); cfgSynced = JSON.stringify(cfgOf()) }
+        if (j.cfg) { Object.assign(state, j.cfg); ensureIdentity(state); state.settings.flow = normalizeFlow(state.settings.flow); cfgSynced = JSON.stringify(cfgOf()) }
         // A leaver that arrives without rules (made before they were frozen) gets the current ones.
         state.leavers.forEach((x) => ensureSnapshot(state, x))
       })

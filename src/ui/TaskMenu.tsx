@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { who } from '../lib/engine'
 import { Button, Dropdown, toast } from '@heroui/react'
 import { localToday } from '../lib/dates'
 import { state } from '../lib/store'
@@ -42,7 +43,7 @@ export function BuiltInDialog({ row, action: w, onClose, mod = 'tasks' }: { row:
   return (
     <Dialog open onClose={onClose} title={w.label}
       footer={<><Button variant="tertiary" onPress={onClose}>Cancel</Button><Button isDisabled={missingAnswers(w, a)} onPress={save}>{w.label}</Button></>}>
-      <p className="mb-1 text-sm font-medium">{leaver.values.name}</p>
+      <p className="mb-1 text-sm font-medium">{who(leaver)}</p>
       <p className="mb-4 text-sm text-muted">{step.name}</p>
       <WorkflowFields w={w} team={step.group} a={a} set={(p) => setA((x) => ({ ...x, ...p }))} />
     </Dialog>
@@ -141,7 +142,7 @@ export function TaskAction({ row, mod = 'tasks' }: { row: TaskRow; mod?: Module 
                 <Line main={w.label} mark={w.finishes === false ? '•' : '✓'} sub={[w.finishes === false ? 'Records it, task stays open' : 'Finishes the task', asksText(w)].filter(Boolean).join(' · ')} />
               </Dropdown.Item>
             ))}
-            {!waiting.length && !states.length && !flow.length ? <Dropdown.Item id="none" textValue="No actions yet" isDisabled>No actions yet. An admin adds them in Settings, Workflow.</Dropdown.Item> : null}
+            {!waiting.length && !states.length && !flow.length ? <Dropdown.Item id="none" textValue="No actions yet" isDisabled>No actions yet. An admin adds them in Settings, Task Actions.</Dropdown.Item> : null}
             {canReopen ? <Dropdown.Item id="h-undo" textValue="Undo" isDisabled className={HEAD}>Undo</Dropdown.Item> : null}
             {canReopen ? <Dropdown.Item id="reopen" textValue="Reopen"><Line main="Reopen" mark="↺" sub="Clears what is recorded on this task" /></Dropdown.Item> : null}
           </Dropdown.Menu>
@@ -181,14 +182,14 @@ export function ActionDialog({ row, action, onClose, mod = 'tasks' }: { row: Tas
   return (
     <Dialog open onClose={onClose} title={action.name}
       footer={<><Button variant="tertiary" onPress={onClose}>Cancel</Button><Button isDisabled={missing} onPress={save}>Save</Button></>}>
-      <p className="mb-1 text-sm font-medium">{leaver.values.name}</p>
+      <p className="mb-1 text-sm font-medium">{who(leaver)}</p>
       <p className="mb-4 text-sm text-muted">{step.name}</p>
       <div className="grid gap-3">
         {action.date !== 'off' && <TextInput label={`Date${req(action.date)}`} type="date" value={date} onChange={setDate} />}
         {action.member !== 'off' && (people.length
           ? <Pick label={`Team member${req(action.member)}`} value={by || '__none'} onChange={(v) => setBy(v === '__none' ? '' : v)}
               options={[{ v: '__none', l: action.member === 'required' ? 'Choose…' : 'Not specified' }, ...people.map((p) => ({ v: p.name, l: p.title ? `${p.name} · ${p.title}` : p.name }))]} />
-          : <p className="text-sm text-warning">No members are listed for {step.group}.{action.member === 'required' ? ' Add them in Settings, Reasons and teams, before using this action.' : ''}</p>)}
+          : <p className="text-sm text-warning">No members are listed for {step.group}.{action.member === 'required' ? ' Add them in Settings, Teams and members, before using this action.' : ''}</p>)}
         {action.comment !== 'off' && <LongText label={`Comment${req(action.comment)}`} value={note} onChange={setNote} rows={3} />}
       </div>
     </Dialog>

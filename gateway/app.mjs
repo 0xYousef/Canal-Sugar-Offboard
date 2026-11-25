@@ -2,6 +2,7 @@
 import { MongoClient } from 'mongodb'
 import { makeAccounts } from './accounts.mjs'
 import { makeLive } from './live.mjs'
+import { makeReport } from './report.mjs'
 
 const { MONGODB_URI, API_KEY, ALLOWED_ORIGIN = '' } = process.env
 const ORIGINS = ALLOWED_ORIGIN.split(',').map((x) => x.trim()).filter(Boolean) // several addresses can be allowed, comma separated
@@ -45,6 +46,13 @@ export async function handler(req, res) {
   if (req.url.split('?')[0] === '/healthz') return send(res, 200, { ok: true }, origin)   // for the host's health check: no key, no data
   if (req.url.split('?')[0] === '/cron/purge') { // Vercel Cron: only removes a sheet whose closing time has passed, returns nothing
     try { const c = await getClient(); await makeLive(c.db(process.env.DB_NAME || 'offboarding'), process.env.DB_COLLECTION || 'app_state').purgeIfDue(); return send(res, 200, { ok: true }, origin) } catch (e) { return send(res, 500, { error: e.message }, origin) }
+  }
+  if (req.url.split('?')[0] === '/report/data') { // live report tables for Excel: protected by REPORT_KEY, not the website's access key
+    try {
+      const u = new URL(req.url, 'http://x'), c = await getClient()
+      const [code, type, text] = await makeReport(c.db(name(u.searchParams.get('database'), 'offboarding')), name(u.searchParams.get('collection'), 'app_state')).handle(req, u)
+      res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(text)
+    } catch (e) { return send(res, 500, { error: 'Report failed: ' + e.message }, origin) }
   }
   if (req.headers['x-api-key'] !== API_KEY) return send(res, 401, { error: 'Wrong access key.' }, origin)
   const u = new URL(req.url, 'http://x')

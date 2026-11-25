@@ -28,12 +28,16 @@ export function LeaverForm({ leaver, onClose }: { leaver: Leaver | null; onClose
   const [vals, setVals] = useState<Record<string, string>>({ ...(leaver?.values ?? {}) })
   const [err, setErr] = useState('')
   const save = () => {
-    if (!vals.name?.trim()) return setErr('Enter the employee name.')
+    if (!vals.empId?.trim()) return setErr('Enter the Employee ID. It identifies the employee and cannot be left empty.')
+    const miss = E.missingRequired(s, vals)
+    if (miss.length) return setErr(`Fill in the required fields: ${miss.join(', ')}.`)
+    const dup = E.findByEmpId(s, vals.empId, leaver ?? undefined)
+    if (dup) return setErr(`Employee ID ${vals.empId.trim()} already belongs to ${dup.values.name || 'another leaver'}${E.isArchived(dup) ? ' (archived)' : ''}. Each ID can be used once.`)
     const l = leaver ?? { id: uid(), values: {}, tasks: {} }
     const changes: string[] = []
     s.fields.forEach((f) => { if (vals[f.key] !== undefined) { const nv = vals[f.key].trim(); if (leaver && (l.values[f.key] ?? '') !== nv) changes.push(`${f.label}: ${l.values[f.key] || 'empty'} to ${nv || 'empty'}`); l.values[f.key] = nv } })
     if (!leaver) { ensureSnapshot(s, l); s.leavers.push(l) }
-    log(leaver ? 'Leaver edited' : 'Leaver added', leaver ? (changes.length ? changes.join('; ') + '.' : 'Saved without changes.') : 'New leaver added.', l.values.name || l.id)
+    log(leaver ? 'Leaver edited' : 'Leaver added', leaver ? (changes.length ? changes.join('; ') + '.' : 'Saved without changes.') : 'New leaver added.', E.who(l))
     commit(); onClose()
   }
   return (
@@ -99,7 +103,7 @@ export default function Leavers() {
             return {
               id: l.id, className: stripe(sum.status), onAction: () => go('leavers', l.id),
               cells: [
-                <b key="n" className="whitespace-nowrap">{l.values.name || '(no name)'}</b>,
+                <b key="n" className="whitespace-nowrap">{E.who(l)}</b>,
                 ...cols.map((c) => display(s, c, l.values[c.key])),
                 display(s, rf, l.values.reason),
                 <ProgressCell key="p" pct={sum.pct} done={sum.done} total={sum.base} status={sum.status} />,

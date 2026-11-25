@@ -23,10 +23,11 @@ export const DEPARTMENTS = ['Sales', 'Operations', 'Finance', 'HR', 'IT', 'Legal
 
 // Field types: text | textarea | number | date | select | checkbox | reason (built-in, uses the reasons list)
 export const FIELDS: Field[] = [
-  { key: 'name', label: 'Employee name', type: 'text', section: 'Employee', builtin: true, required: true, requiredFor: [], showInList: true },
-  { key: 'empId', label: 'Employee ID', type: 'text', section: 'Employee', builtin: false, required: false, requiredFor: [], showInList: false },
-  { key: 'dept', label: 'Department', type: 'select', options: DEPARTMENTS, section: 'Employee', builtin: false, required: false, requiredFor: [], showInList: true },
-  { key: 'site', label: 'Site', type: 'text', section: 'Employee', builtin: false, required: false, requiredFor: [], showInList: false },
+  { key: 'name', label: 'Employee name', type: 'text', section: 'Employee', builtin: true, required: false, requiredFor: [], showInList: true },
+  { key: 'empId', label: 'Employee ID', type: 'text', section: 'Employee', builtin: true, required: true, requiredFor: [], showInList: true },
+  { key: 'email', label: 'Email', type: 'text', section: 'Employee', builtin: false, required: false, requiredFor: [], showInList: false },
+  { key: 'dept', label: 'Department', type: 'select', options: DEPARTMENTS, section: 'Employee', builtin: false, required: true, requiredFor: [], showInList: true },
+  { key: 'site', label: 'Location', type: 'text', section: 'Employee', builtin: false, required: true, requiredFor: [], showInList: false },
   { key: 'reason', label: 'Reason for leaving', type: 'reason', section: 'Employee', builtin: true, required: true, requiredFor: [], showInList: true },
   { key: 'hireDate', label: 'Hire date', type: 'date', section: 'Dates', builtin: false, required: false, requiredFor: ['R01', 'R04'], showInList: false },
   { key: 'requestDate', label: 'Date request received', type: 'date', section: 'Dates', builtin: false, required: true, requiredFor: [], showInList: false },
@@ -117,6 +118,8 @@ export function defaultState(): State {
   return clone<State>({
     version: 2,
     settings: {
+      deptSiteRequired: true,
+      emailField: true,
       weekend: 'FS', dueSoon: 2, reportDate: '', holidays: defaultHolidays(),
       notice: { hireField: 'hireDate', requestField: 'requestDate', endField: 'termDate', years: 10, short: 2, long: 3 },
       flow: DEFAULT_FLOW,

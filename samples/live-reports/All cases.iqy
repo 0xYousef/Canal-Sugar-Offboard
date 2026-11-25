@@ -1,0 +1,3 @@
+WEB
+1
+https://YOUR-APP.vercel.app/api/report/data?table=cases&format=html&key=YOUR_REPORT_KEY

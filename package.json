@@ -10,6 +10,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "guide:record": "VITE_SEED_DEMO=1 vite build --outDir dist-demo && node e2e/record/record.mjs",
+    "build:gateway": "rolldown src/lib/reportData.ts --format esm --file gateway/report-data.mjs",
     "package:windows": "node scripts/make-windows-zip.mjs",
     "e2e:workflow": "node e2e/workflow/workflow.e2e.mjs",
     "e2e:shared": "node e2e/workflow/shared.e2e.mjs",
